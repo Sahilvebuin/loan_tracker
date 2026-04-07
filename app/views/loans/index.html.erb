@@ -1,0 +1,43 @@
+<div class="lc-page">
+  <div class="lc-shell">
+    <header class="lc-header">
+      <div>
+        <div class="lc-title">Loans</div>
+        <div class="lc-subtitle">Saved loans and their prepayments.</div>
+      </div>
+      <nav class="lc-nav">
+        <%= link_to "Calculator", root_path, class: "lc-nav__link" %>
+      </nav>
+    </header>
+
+    <% if @loans.blank? %>
+      <div class="lc-card" style="padding: 16px;">No loans yet.</div>
+    <% else %>
+      <div class="lc-card" style="padding: 16px;">
+        <table class="lc-table">
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th class="num">Principal</th>
+              <th class="num">Rate</th>
+              <th class="num">Term (months)</th>
+              <th class="num">Prepayments</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @loans.each do |loan| %>
+              <tr>
+                <td><%= link_to(loan.title.presence || "Loan ##{loan.id}", loan_path(loan)) %></td>
+                <td class="num"><%= format_inr(loan.principal) %></td>
+                <td class="num"><%= loan.annual_interest_rate %>%</td>
+                <td class="num"><%= loan.term_months %></td>
+                <td class="num"><%= loan.prepayments.count %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% end %>
+  </div>
+</div>
+

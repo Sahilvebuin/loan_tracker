@@ -1,0 +1,42 @@
+<div class="lc-page">
+  <div class="lc-shell">
+    <header class="lc-header">
+      <div>
+        <div class="lc-title">Login</div>
+        <div class="lc-subtitle">Sign in to save loans and prepayments.</div>
+      </div>
+      <nav class="lc-nav">
+        <%= link_to "Calculator", root_path, class: "lc-nav__link" %>
+        <%= link_to "Create account", new_user_path, class: "lc-btn lc-btn--ghost" %>
+      </nav>
+    </header>
+
+    <div class="lc-card" style="max-width: 520px; margin: 20px auto; padding: 16px;">
+      <%= form_with url: session_path, local: true do |f| %>
+        <div class="lc-field">
+          <div class="lc-field__head">
+            <div class="lc-field__label">Email</div>
+            <div class="lc-inputgroup">
+              <%= email_field_tag :email, params[:email], class: "lc-input", required: true %>
+            </div>
+          </div>
+        </div>
+
+        <div class="lc-field">
+          <div class="lc-field__head">
+            <div class="lc-field__label">Password</div>
+            <div class="lc-inputgroup">
+              <%= password_field_tag :password, nil, class: "lc-input", required: true %>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+          <%= submit_tag "Login", class: "lc-btn" %>
+          <span style="color: var(--lc-muted); font-size: 12px;">New here? <%= link_to "Create account", new_user_path %></span>
+        </div>
+      <% end %>
+    </div>
+  </div>
+</div>
+

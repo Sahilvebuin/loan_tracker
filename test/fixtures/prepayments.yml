@@ -1,0 +1,13 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  loan: one
+  amount: 50000
+  paid_on: 2026-04-07
+  notes: Fixture prepayment
+
+two:
+  loan: two
+  amount: 10000
+  paid_on: 2026-04-07
+  notes: Fixture prepayment

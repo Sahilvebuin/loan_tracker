@@ -1,0 +1,63 @@
+<div class="lc-page">
+  <div class="lc-shell">
+    <header class="lc-header">
+      <div>
+        <div class="lc-title">Sign up</div>
+        <div class="lc-subtitle">Create an account to save loan amounts and prepayments.</div>
+      </div>
+      <nav class="lc-nav">
+        <%= link_to "Calculator", root_path, class: "lc-nav__link" %>
+        <%= link_to "Login", new_session_path, class: "lc-btn lc-btn--ghost" %>
+      </nav>
+    </header>
+
+    <div class="lc-card" style="max-width: 600px; margin: 20px auto; padding: 16px;">
+      <% if @user.errors.any? %>
+        <div class="lc-flash lc-flash--alert">
+          <%= @user.errors.full_messages.to_sentence %>
+        </div>
+      <% end %>
+
+      <%= form_with model: @user, local: true do |f| %>
+        <div class="lc-field">
+          <div class="lc-field__head">
+            <div class="lc-field__label">Name</div>
+            <div class="lc-inputgroup">
+              <%= f.text_field :name, class: "lc-input", required: true %>
+            </div>
+          </div>
+        </div>
+
+        <div class="lc-field">
+          <div class="lc-field__head">
+            <div class="lc-field__label">Email</div>
+            <div class="lc-inputgroup">
+              <%= f.email_field :email, class: "lc-input", required: true %>
+            </div>
+          </div>
+        </div>
+
+        <div class="lc-field">
+          <div class="lc-field__head">
+            <div class="lc-field__label">Password</div>
+            <div class="lc-inputgroup">
+              <%= f.password_field :password, class: "lc-input", required: true %>
+            </div>
+          </div>
+        </div>
+
+        <div class="lc-field">
+          <div class="lc-field__head">
+            <div class="lc-field__label">Confirm password</div>
+            <div class="lc-inputgroup">
+              <%= f.password_field :password_confirmation, class: "lc-input", required: true %>
+            </div>
+          </div>
+        </div>
+
+        <%= f.submit "Create account", class: "lc-btn" %>
+      <% end %>
+    </div>
+  </div>
+</div>
+

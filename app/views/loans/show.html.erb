@@ -1,0 +1,33 @@
+<div class="lc-page">
+  <div class="lc-shell">
+    <header class="lc-header">
+      <div>
+        <div class="lc-title"><%= @loan.title.presence || "Loan ##{@loan.id}" %></div>
+        <div class="lc-subtitle"><%= format_inr(@loan.principal) %> · <%= @loan.annual_interest_rate %>% · <%= @loan.term_months %> months</div>
+      </div>
+      <nav class="lc-nav">
+        <%= link_to "Calculator", root_path, class: "lc-nav__link" %>
+        <%= link_to "Loans", loans_path, class: "lc-nav__link" %>
+      </nav>
+    </header>
+
+    <div class="lc-card" style="padding: 16px;">
+      <div style="display:flex; gap: 10px; flex-wrap: wrap;">
+        <div><strong>Start date:</strong> <%= @loan.start_date %></div>
+        <div><strong>Outstanding:</strong> <%= format_inr(@loan.outstanding_principal) %></div>
+      </div>
+
+      <h3 style="margin-top: 14px;">Prepayments</h3>
+      <% if @loan.prepayments.any? %>
+        <ul>
+          <% @loan.prepayments.order(paid_on: :desc, id: :desc).each do |pp| %>
+            <li><%= format_inr(pp.amount) %> on <%= pp.paid_on %></li>
+          <% end %>
+        </ul>
+      <% else %>
+        <p>No prepayments yet.</p>
+      <% end %>
+    </div>
+  </div>
+</div>
+

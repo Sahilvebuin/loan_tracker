@@ -1,0 +1,35 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Loan Calculator">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#111827"/>
+      <stop offset="1" stop-color="#1f2937"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fb8c00"/>
+      <stop offset="1" stop-color="#80c000"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <rect x="0" y="0" width="512" height="512" rx="120" fill="url(#bg)"/>
+
+  <!-- Card -->
+  <g filter="url(#soft)">
+    <rect x="108" y="126" width="296" height="260" rx="36" fill="#ffffff"/>
+    <rect x="132" y="154" width="248" height="18" rx="9" fill="#e5e7eb"/>
+    <rect x="132" y="186" width="190" height="18" rx="9" fill="#e5e7eb"/>
+
+    <!-- Rupee + chart bars -->
+    <g transform="translate(0,0)">
+      <path d="M178 235h60c14 0 26 11 26 25s-12 25-26 25h-60m0-50h90m-90 22h52c20 0 36 16 36 36 0 18-14 33-32 36l40 49h-42l-44-55h-10" fill="none" stroke="#111827" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="280" y="242" width="20" height="86" rx="10" fill="#80c000"/>
+      <rect x="312" y="222" width="20" height="106" rx="10" fill="#fb8c00"/>
+      <rect x="344" y="262" width="20" height="66" rx="10" fill="#c00058"/>
+    </g>
+  </g>
+
+  <!-- Accent underline -->
+  <rect x="130" y="406" width="252" height="14" rx="7" fill="url(#accent)" opacity="0.95"/>
+</svg>
