@@ -13,4 +13,3 @@ class CreateLoanCalculatorPresets < ActiveRecord::Migration[8.1]
     add_index :loan_calculator_presets, :key, unique: true
   end
 end
-

@@ -39,10 +39,10 @@ module CalculatorHelper
     rate = home[:annual_interest_rate].to_f
     m = home[:term_months].to_i
     outstanding = home[:outstanding_principal].present? ? home[:outstanding_principal].to_f : p_orig
-    outstanding = [outstanding, 0.0].max
+    outstanding = [ outstanding, 0.0 ].max
 
     monthly = loan_emi(p_orig, rate, m)
-    prepay_total = [p_orig - outstanding, 0.0].max
+    prepay_total = [ p_orig - outstanding, 0.0 ].max
 
     if outstanding <= 0.01
       return {
@@ -50,7 +50,7 @@ module CalculatorHelper
         total_interest: 0.0,
         total_payment: 0.0,
         remaining_months: 0,
-        outstanding_principal: 0.0,
+        outstanding_principal: 0.0
       }
     end
 
@@ -68,7 +68,7 @@ module CalculatorHelper
       total_interest: total_interest,
       total_payment: total_payment,
       remaining_months: m_rem,
-      outstanding_principal: outstanding,
+      outstanding_principal: outstanding
     }
   end
 
@@ -104,8 +104,8 @@ module CalculatorHelper
         principal_paid: principal_part.round(2),
         interest_paid: interest.round(2),
         total_paid: (principal_part + interest).round(2),
-        balance: [balance, 0].max.round(2),
-        paid_to_date: paid_to_date.round(2),
+        balance: [ balance, 0 ].max.round(2),
+        paid_to_date: paid_to_date.round(2)
       }
 
       m += 1
@@ -117,9 +117,56 @@ module CalculatorHelper
     rows
   end
 
+  # EMIs on EMI_PAY_DAY whose due date is strictly before +as_of+ are treated as already paid (autopay after the 15th).
+  def autopay_emis_already_passed_count(start_year, start_month, max_months, as_of: Date.current)
+    y = start_year.to_i
+    m = start_month.to_i.clamp(1, 12)
+    paid = 0
+    while paid < max_months.to_i
+      due = Date.new(y, m, EMI_PAY_DAY)
+      break if as_of <= due
+
+      paid += 1
+      m += 1
+      if m > 12
+        m = 1
+        y += 1
+      end
+    end
+    paid
+  end
+
+  # KPIs aligned with the yearly table: outstanding, tenure, interest & total for EMIs still to come after autopay (15th passed).
+  def loan_kpis_after_autopay(outstanding, annual_rate_percent, remaining_months, fixed_emi, start_year:, start_month:, as_of: Date.current)
+    o = outstanding.to_f
+    m_rem = remaining_months.to_i
+    return { outstanding_principal: 0.0, remaining_months: 0, total_interest: 0.0, total_payment: 0.0 } if m_rem <= 0 || o <= 0.01
+
+    rows = monthly_amortization_rows(o, annual_rate_percent, m_rem, start_year: start_year, start_month: start_month, fixed_payment: fixed_emi)
+    skip = autopay_emis_already_passed_count(start_year, start_month, m_rem, as_of: as_of)
+    skip = [ skip, rows.length ].min
+    outstanding2 =
+      if skip.zero?
+        o
+      elsif skip >= rows.length
+        0.0
+      else
+        rows[skip - 1][:balance].to_f
+      end
+    tail = rows[skip..] || []
+    {
+      outstanding_principal: outstanding2,
+      remaining_months: tail.length,
+      total_interest: tail.sum { |r| r[:interest_paid].to_f },
+      total_payment: tail.sum { |r| r[:total_paid].to_f }
+    }
+  end
+
   # basis: :calendar (Jan–Dec) or :financial (Indian Apr–Mar).
-  def yearly_amortization_rows(principal, annual_rate_percent, months, start_year: Date.current.year, start_month: Date.current.month, basis: :calendar, fixed_payment: nil)
+  def yearly_amortization_rows(principal, annual_rate_percent, months, start_year: Date.current.year, start_month: Date.current.month, basis: :calendar, fixed_payment: nil, as_of: Date.current)
     monthly = monthly_amortization_rows(principal, annual_rate_percent, months, start_year: start_year, start_month: start_month, fixed_payment: fixed_payment)
+    skip = autopay_emis_already_passed_count(start_year, start_month, months, as_of: as_of)
+    monthly = monthly.drop(skip)
     group_yearly_from_monthly(monthly, basis: basis)
   end
 
@@ -150,7 +197,7 @@ module CalculatorHelper
         total_paid: total_paid,
         balance: mrows.last[:balance],
         paid_to_date: mrows.last[:paid_to_date],
-        months: mrows,
+        months: mrows
       }
     end.sort_by { |row| row[:year] }
   end
@@ -183,9 +230,9 @@ module CalculatorHelper
     p = principal_amount.to_f
     i = total_interest.to_f
     t = p + i
-    return [0.0, 0.0] if t <= 0
+    return [ 0.0, 0.0 ] if t <= 0
 
-    [(p / t * 100).round(1), (i / t * 100).round(1)]
+    [ (p / t * 100).round(1), (i / t * 100).round(1) ]
   end
 
   # Hash for ERB: tenure UI for "home" slice (months vs years + slider max).
@@ -197,7 +244,7 @@ module CalculatorHelper
                principal: 2_637_000, rate: 7.70 }
     end
     if (tm % 12).zero?
-      { use_months: false, tenure_value: [tm / 12, 30].min, tenure_max: 30, amount_max: (home[:amount_slider_max].presence || 20_000_000).to_i,
+      { use_months: false, tenure_value: [ tm / 12, 30 ].min, tenure_max: 30, amount_max: (home[:amount_slider_max].presence || 20_000_000).to_i,
         principal: home[:principal].to_f, rate: home[:annual_interest_rate].to_f }
     else
       { use_months: true, tenure_value: tm, tenure_max: 360, amount_max: (home[:amount_slider_max].presence || 20_000_000).to_i,
@@ -214,7 +261,7 @@ module CalculatorHelper
 
     {
       home: slot_config(home_loan, preset_home, home_fallback),
-      additional: slot_config(add_loan, preset_add, additional_fallback),
+      additional: slot_config(add_loan, preset_add, additional_fallback)
     }
   end
 
@@ -250,7 +297,7 @@ module CalculatorHelper
       recorded_prepayment_total: recorded_prepayment.to_f,
       annual_interest_rate: rate.to_f,
       term_months: term_months,
-      amount_slider_max: amount_slider_max,
+      amount_slider_max: amount_slider_max
     }
   end
 
@@ -259,16 +306,16 @@ module CalculatorHelper
       principal: 2_637_000,
       rate: 7.70,
       term_months: 165,
-      amount_slider_max: 20_000_000,
+      amount_slider_max: 20_000_000
     }
   end
 
   def additional_fallback
     {
-      principal: 493_693,
-      rate: 7.55,
-      term_months: 172,
-      amount_slider_max: 5_000_000,
+      principal: 2_637_000,
+      rate: 7.70,
+      term_months: 165,
+      amount_slider_max: 20_000_000
     }
   end
 end

@@ -15,6 +15,6 @@ class Loan < ApplicationRecord
   end
 
   def outstanding_principal
-    [principal - total_prepayments, 0].max
+    [ principal - total_prepayments, 0 ].max
   end
 end

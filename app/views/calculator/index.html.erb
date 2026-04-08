@@ -29,11 +29,13 @@
         <% cfg = loan_calculator_config_for(nil) if cfg.blank? %>
         <% cfg = cfg.with_indifferent_access %>
         <% ui = home_loan_ui(cfg) %>
-        <% met = loan_home_metrics(cfg) %>
         <% home_slice = (cfg[:home] || {}).with_indifferent_access %>
+        <% met_base = loan_home_metrics(cfg) %>
         <% fixed_emi = loan_emi(home_slice[:principal].to_f, home_slice[:annual_interest_rate].to_f, home_slice[:term_months].to_i) %>
+        <% schedule_sy, schedule_sm = Date.current.year, Date.current.month %>
+        <% met = met_base.merge(loan_kpis_after_autopay(met_base[:outstanding_principal], home_slice[:annual_interest_rate].to_f, met_base[:remaining_months], met_base[:emi], start_year: schedule_sy, start_month: schedule_sm)) %>
         <% out_principal = (home_slice[:outstanding_principal].presence || home_slice[:principal]).to_f %>
-        <% yr_rows = yearly_amortization_rows(out_principal, home_slice[:annual_interest_rate].to_f, met[:remaining_months], start_year: Date.current.year, start_month: Date.current.month, basis: :calendar, fixed_payment: fixed_emi) %>
+        <% yr_rows = yearly_amortization_rows(out_principal, home_slice[:annual_interest_rate].to_f, met_base[:remaining_months], start_year: schedule_sy, start_month: schedule_sm, basis: :calendar, fixed_payment: fixed_emi) %>
         <% p_pct, i_pct = payment_breakup_percentages(met[:outstanding_principal], met[:total_interest]) %>
         <% max_yearly_pay = yr_rows.map { |r| r[:total_paid].to_f }.max %>
         <% max_yearly_pay = 1.0 if max_yearly_pay.nil? || max_yearly_pay <= 0 %>
@@ -269,7 +271,7 @@
               </div>
             </div>
             <div class="lc-schedule-toolbar">
-              <span class="lc-schedule-toolbar__label">Schedule showing EMI auto-payments on the 15th, starting from</span>
+              <span class="lc-schedule-toolbar__label">Both loans deduct EMI on the <strong>15th</strong> of each month — schedule starting from</span>
               <div class="lc-schedule-toolbar__controls">
                 <input
                   type="month"

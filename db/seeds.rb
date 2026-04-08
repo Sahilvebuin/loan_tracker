@@ -7,20 +7,20 @@ SHARED_HOME_LOAN = {
   annual_interest_rate: 7.70,
   term_months: 165,
   start_date: Date.new(2026, 4, 7),
-  notes: "Principal ₹26,37,000 · 7.70% p.a. · 165 months (seeded).",
+  notes: "Principal ₹26,37,000 · 7.70% p.a. · 165 months — EMI deduction 15th (same as additional loan)."
 }.freeze
 
 SHARED_ADDITIONAL_LOAN = {
-  principal: 493_693,
-  annual_interest_rate: 7.55,
-  term_months: 172,
+  principal: 2_637_000,
+  annual_interest_rate: 7.70,
+  term_months: 165,
   start_date: Date.new(2026, 4, 7),
-  notes: "Principal ₹4,93,693 · 7.55% p.a. · 172 months (seeded).",
+  notes: "Principal ₹26,37,000 · 7.70% p.a. · 165 months — EMI deduction 15th (same as home loan)."
 }.freeze
 
 brother_specs = [
   { email: "brother1@example.com", name: "Sahil" },
-  { email: "brother2@example.com", name: "Sanket" },
+  { email: "brother2@example.com", name: "Sanket" }
 ]
 
 brothers = brother_specs.map do |spec|
@@ -62,6 +62,6 @@ LoanCalculatorPreset.find_or_initialize_by(key: "additional").tap do |p|
   p.principal = SHARED_ADDITIONAL_LOAN[:principal]
   p.annual_interest_rate = SHARED_ADDITIONAL_LOAN[:annual_interest_rate]
   p.term_months = SHARED_ADDITIONAL_LOAN[:term_months]
-  p.amount_slider_max = 5_000_000
+  p.amount_slider_max = 20_000_000
   p.save!
 end

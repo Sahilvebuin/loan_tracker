@@ -107,6 +107,56 @@ function buildMonthSchedule({ principal, annualRatePercent, months, startYear, s
   return rows
 }
 
+/** EMIs whose due date (15th) has already passed — autopay treated as done for those months. */
+function countAutopayEmisAlreadyPassed(startYear, startMonth, maxMonths) {
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  let y = startYear
+  let mo = startMonth
+  let paid = 0
+  while (paid < maxMonths) {
+    const due = new Date(y, mo - 1, EMI_PAY_DAY)
+    due.setHours(0, 0, 0, 0)
+    if (today <= due) break
+    paid += 1
+    mo += 1
+    if (mo > 12) {
+      mo = 1
+      y += 1
+    }
+  }
+  return paid
+}
+
+/**
+ * Outstanding balance and remaining totals after autopay EMIs (same slice as yearly table).
+ * +full+ schedule is built from pre-autopay principal + tenure; +skip+ rows are treated as already paid.
+ */
+function scheduleAfterAutopay(principal, annualRatePercent, months, fixedPayment, startYear, startMonth) {
+  const full = buildMonthSchedule({
+    principal,
+    annualRatePercent,
+    months,
+    startYear,
+    startMonth,
+    fixedPayment,
+  })
+  const skipRaw = countAutopayEmisAlreadyPassed(startYear, startMonth, months)
+  const skip = Math.min(skipRaw, full.length)
+  let outstanding = principal
+  if (skip > 0) {
+    outstanding = skip >= full.length ? 0 : full[skip - 1].balance
+  }
+  const tail = full.slice(skip)
+  let totalPayRem = 0
+  let totalIntRem = 0
+  for (const r of tail) {
+    totalPayRem += r.totalPaid
+    totalIntRem += r.interestPaid
+  }
+  return { full, skip, outstanding, remainingMonths: tail.length, totalPayRem, totalIntRem }
+}
+
 function groupIntoPeriods(monthRows, basis) {
   const map = new Map()
   const order = []
@@ -172,12 +222,12 @@ const FALLBACK = {
     term_months: 165,
   },
   additional: {
-    principal: 493_693,
-    outstanding_principal: 493_693,
+    principal: 2_637_000,
+    outstanding_principal: 2_637_000,
     recorded_prepayment_total: 0,
-    amount_slider_max: 5_000_000,
-    annual_interest_rate: 7.55,
-    term_months: 172,
+    amount_slider_max: 20_000_000,
+    annual_interest_rate: 7.7,
+    term_months: 165,
   },
 }
 
@@ -783,29 +833,37 @@ export default class extends Controller {
       scheduleMonths = monthsFromFixedEmi(effectivePrincipal, rate, originalEmi)
     }
 
-    const totalPayment = originalEmi * scheduleMonths
-    const totalInterest = totalPayment - effectivePrincipal
+    const { startYear, startMonth } = this.scheduleParams()
+    const ap = scheduleAfterAutopay(
+      effectivePrincipal,
+      rate,
+      scheduleMonths,
+      originalEmi,
+      startYear,
+      startMonth,
+    )
 
     this.emiOutTarget.textContent = formatInr(originalEmi)
-    this.interestOutTarget.textContent = formatInr(totalInterest)
-    this.totalOutTarget.textContent = formatInr(totalPayment)
+    this.interestOutTarget.textContent = formatInr(round2(ap.totalIntRem))
+    this.totalOutTarget.textContent = formatInr(round2(ap.totalPayRem))
 
     if (this.hasEffectivePrincipalOutTarget) {
-      this.effectivePrincipalOutTarget.textContent = formatInr(effectivePrincipal)
+      this.effectivePrincipalOutTarget.textContent = formatInr(ap.outstanding)
     }
     if (this.hasEffectivePrincipalNoteTarget) {
       this.effectivePrincipalNoteTarget.hidden = totalPrepay <= 0
     }
     if (this.hasRemainingTenureOutTarget) {
-      this.remainingTenureOutTarget.textContent = this.formatRemainingMonths(scheduleMonths)
+      this.remainingTenureOutTarget.textContent = this.formatRemainingMonths(ap.remainingMonths)
     }
 
-    this.updateDonut(effectivePrincipal, totalPayment)
+    this.updateDonut(ap.outstanding, ap.totalPayRem)
     this.renderYearly({
       principal: effectivePrincipal,
       rate,
       months: scheduleMonths,
       fixedPayment: originalEmi,
+      schedulePrecalc: ap,
     })
   }
 
@@ -842,16 +900,12 @@ export default class extends Controller {
     })
   }
 
-  renderYearly({ principal, rate, months, fixedPayment }) {
+  renderYearly({ principal, rate, months, fixedPayment, schedulePrecalc }) {
     const { startYear, startMonth, basis } = this.scheduleParams()
-    const monthRows = buildMonthSchedule({
-      principal,
-      annualRatePercent: rate,
-      months,
-      startYear,
-      startMonth,
-      fixedPayment,
-    })
+    const ap =
+      schedulePrecalc ??
+      scheduleAfterAutopay(principal, rate, months, fixedPayment, startYear, startMonth)
+    const monthRows = ap.full.slice(ap.skip)
     const groups = groupIntoPeriods(monthRows, basis)
 
     const tableHtml = []
