@@ -6,7 +6,7 @@ SHARED_HOME_LOAN = {
   principal: 2_637_000,
   annual_interest_rate: 7.70,
   term_months: 165,
-  start_date: Date.new(2026, 4, 7),
+  start_date: Date.new(2026, 3, 16),
   notes: "Principal ₹26,37,000 · 7.70% p.a. · 165 months — EMI deduction 15th (same as additional loan)."
 }.freeze
 
@@ -14,7 +14,7 @@ SHARED_ADDITIONAL_LOAN = {
   principal: 493_693,
   annual_interest_rate: 7.55,
   term_months: 172,
-  start_date: Date.new(2026, 4, 7),
+  start_date: Date.new(2026, 3, 16),
   notes: "Principal ₹4,93,693 · 7.55% p.a. · 172 months — EMI deduction 15th (same as home loan)."
 }.freeze
 
@@ -45,6 +45,7 @@ end
 
 # Identical additional home loan on each user (separate loan, separate prepayments)
 brothers.each do |user|
+  Loan.find_by(title: "Additional Home Loan", user: user).destroy
   loan = Loan.find_or_initialize_by(user: user, title: "Additional Home Loan")
   loan.assign_attributes(SHARED_ADDITIONAL_LOAN)
   loan.save!
