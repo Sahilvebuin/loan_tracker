@@ -222,12 +222,12 @@ const FALLBACK = {
     term_months: 165,
   },
   additional: {
-    principal: 2_637_000,
-    outstanding_principal: 2_637_000,
+    principal: 493_693,
+    outstanding_principal: 493_693,
     recorded_prepayment_total: 0,
-    amount_slider_max: 20_000_000,
-    annual_interest_rate: 7.7,
-    term_months: 165,
+    amount_slider_max: 5_000_000,
+    annual_interest_rate: 7.55,
+    term_months: 172,
   },
 }
 

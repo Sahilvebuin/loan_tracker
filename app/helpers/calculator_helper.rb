@@ -312,10 +312,10 @@ module CalculatorHelper
 
   def additional_fallback
     {
-      principal: 2_637_000,
-      rate: 7.70,
-      term_months: 165,
-      amount_slider_max: 20_000_000
+      principal: 493_693,
+      rate: 7.55,
+      term_months: 172,
+      amount_slider_max: 5_000_000
     }
   end
 end
