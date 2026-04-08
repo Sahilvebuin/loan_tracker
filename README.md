@@ -2,7 +2,7 @@
 
 ## Run with Docker (development)
 
-This app uses **SQLite** (stored in `storage/`), so you don’t need a separate DB container.
+This app uses **PostgreSQL** via a `db` service in `docker-compose.yml`.
 
 ### Start
 
@@ -15,6 +15,7 @@ Then open `http://localhost:3000`.
 ### Seed data (optional)
 
 ```bash
+docker compose exec web bin/rails db:prepare
 docker compose exec web bin/rails db:seed
 ```
 

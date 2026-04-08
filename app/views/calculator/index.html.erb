@@ -184,7 +184,10 @@
                             <% if pp.notes.present? %>
                               <span class="lc-prepay-applied__meta lc-prepay-applied__meta--note"><%= pp.notes %></span>
                             <% end %>
-                            <%= button_to "Remove", loan_prepayment_path(home_loan, pp), method: :delete, class: "lc-btn lc-btn--ghost lc-btn--tiny", form: { data: { turbo_confirm: "Remove this prepayment?" } } %>
+                            <% removable = pp.paid_on.present? && pp.paid_on >= (Date.current - 5) %>
+                            <% if removable %>
+                              <%= button_to "Remove", loan_prepayment_path(home_loan, pp), method: :delete, class: "lc-btn lc-btn--ghost lc-btn--tiny", form: { data: { turbo_confirm: "Remove this prepayment?" } } %>
+                            <% end %>
                           </li>
                         <% end %>
                       </ul>
@@ -201,7 +204,10 @@
                             <% if pp.notes.present? %>
                               <span class="lc-prepay-applied__meta lc-prepay-applied__meta--note"><%= pp.notes %></span>
                             <% end %>
-                            <%= button_to "Remove", loan_prepayment_path(additional_loan, pp), method: :delete, class: "lc-btn lc-btn--ghost lc-btn--tiny", form: { data: { turbo_confirm: "Remove this prepayment?" } } %>
+                            <% removable = pp.paid_on.present? && pp.paid_on >= (Date.current - 5) %>
+                            <% if removable %>
+                              <%= button_to "Remove", loan_prepayment_path(additional_loan, pp), method: :delete, class: "lc-btn lc-btn--ghost lc-btn--tiny", form: { data: { turbo_confirm: "Remove this prepayment?" } } %>
+                            <% end %>
                           </li>
                         <% end %>
                       </ul>
