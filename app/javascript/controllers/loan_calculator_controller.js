@@ -248,6 +248,8 @@ export default class extends Controller {
     // Must run before configValueChanged(); otherwise applyDefaults(undefined) clears the amount label text.
     this.activeLoanType = "home"
     this.appliedPrepayments = { home: [], additional: [] }
+    /** Original sanctioned principal for EMI math; amount field may show current outstanding after EMI due dates. */
+    this.emiBasisBySlot = { home: null, additional: null }
   }
 
   storageNamespace() {
@@ -427,10 +429,11 @@ export default class extends Controller {
       }
     }
     if (activeForm && activeForm.id && this.hasAmountInputTarget) {
-      // Update the hidden field inside the active form before submit.
-      // Also keep an explicit name/form wiring as a fallback.
-      this.amountInputTarget.setAttribute("name", "loan[principal]")
-      this.amountInputTarget.setAttribute("form", activeForm.id)
+      // Submit sanctioned principal (EMI basis), not the displayed current outstanding.
+      this.amountInputTarget.removeAttribute("name")
+      this.amountInputTarget.removeAttribute("form")
+      const hid = activeForm.querySelector('input[type="hidden"][name="loan[principal]"]')
+      if (hid) hid.value = String(Math.round(this.emiBasisPrincipal()))
     }
   }
 
@@ -473,13 +476,12 @@ export default class extends Controller {
     const slot = cfg[loanType] || {}
     const fb = FALLBACK[loanType]
     const principal = Number(slot.principal) || fb.principal
+    this.emiBasisBySlot[loanType] = principal
     const max = Number(slot.amount_slider_max) || fb.amount_slider_max
     const rate = Number(slot.annual_interest_rate) || fb.annual_interest_rate
     const termMonths = Number(slot.term_months) || fb.term_months
 
-    this.amountInputTarget.value = principal.toLocaleString("en-IN")
     this.amountRangeTarget.max = String(max)
-    this.amountRangeTarget.value = String(principal)
     this.updateAmountMarks(max)
 
     this.rateInputTarget.value = String(rate)
@@ -548,14 +550,18 @@ export default class extends Controller {
     return this.activeLoanType === "additional" ? "additional" : "home"
   }
 
-  /** Loan amount from range/text, with fallback to server config (fixes clamp/recalc when UI parse fails). */
-  loanAmountFromUi() {
-    let n = toNumber(this.amountRangeTarget.value, 0)
-    if (n <= 0) n = toNumber(this.amountInputTarget.value, 0)
-    if (n <= 0) {
-      const slot = this.currentSlot()
-      const p = Number(slot?.principal)
-      if (Number.isFinite(p) && p > 0) n = p
+  /**
+   * Sanctioned loan amount used for EMI (original principal). The amount field may show current
+   * outstanding after calendar EMIs on the 15th are treated as paid.
+   */
+  emiBasisPrincipal() {
+    const key = this.currentKey()
+    const slot = this.currentSlot()
+    const fb = FALLBACK[key]
+    let n = this.emiBasisBySlot[key]
+    if (n == null || n <= 0) {
+      n = Number(slot?.principal) || fb.principal
+      this.emiBasisBySlot[key] = n
     }
     return n
   }
@@ -579,7 +585,7 @@ export default class extends Controller {
     if (!this.hasPrepaymentInputTarget) return
     const slot = this.currentSlot()
     const recorded = Number(slot.recorded_prepayment_total || 0)
-    const loanAmt = this.loanAmountFromUi()
+    const loanAmt = this.emiBasisPrincipal()
     let prep = Math.max(0, toNumber(this.prepaymentInputTarget.value, 0))
     const applied = this.appliedExtraTotal()
     const maxExtra = Math.max(0, loanAmt - recorded - applied)
@@ -650,6 +656,7 @@ export default class extends Controller {
 
   syncFromAmountInput() {
     const n = toNumber(this.amountInputTarget.value, 0)
+    this.emiBasisBySlot[this.currentKey()] = n
     this.amountRangeTarget.value = String(n)
     this.amountInputTarget.value = n.toLocaleString("en-IN")
     this.clampPrepaymentToLoanAmount()
@@ -660,6 +667,7 @@ export default class extends Controller {
 
   syncFromAmountRange() {
     const n = toNumber(this.amountRangeTarget.value, 0)
+    this.emiBasisBySlot[this.currentKey()] = n
     this.amountInputTarget.value = n.toLocaleString("en-IN")
     this.clampPrepaymentToLoanAmount()
     this.syncSaveLoanUi()
@@ -709,7 +717,7 @@ export default class extends Controller {
 
     const slot = this.currentSlot()
     const recorded = Number(slot.recorded_prepayment_total || 0)
-    let loanAmount = this.loanAmountFromUi()
+    let loanAmount = this.emiBasisPrincipal()
     let rate = toNumber(this.rateRangeTarget.value, 0)
     let tenure = toNumber(this.tenureRangeTarget.value, 0)
     if (rate <= 0) rate = toNumber(this.rateInputTarget.value, 0)
@@ -753,7 +761,7 @@ export default class extends Controller {
 
     this.clampPrepaymentToLoanAmount()
 
-    let loanAmount = this.loanAmountFromUi()
+    let loanAmount = this.emiBasisPrincipal()
     let rate = toNumber(this.rateRangeTarget.value, 0)
     let tenure = toNumber(this.tenureRangeTarget.value, 0)
     if (rate <= 0) rate = toNumber(this.rateInputTarget.value, 0)
@@ -811,7 +819,7 @@ export default class extends Controller {
     const recorded = Number(slot.recorded_prepayment_total || 0)
     const applied = this.appliedExtraTotal()
 
-    let loanAmount = this.loanAmountFromUi()
+    let loanAmount = this.emiBasisPrincipal()
     let rate = toNumber(this.rateRangeTarget.value, 0)
     let tenure = toNumber(this.tenureRangeTarget.value, 0)
     if (rate <= 0) rate = toNumber(this.rateInputTarget.value, 0)
@@ -856,6 +864,18 @@ export default class extends Controller {
     if (this.hasRemainingTenureOutTarget) {
       this.remainingTenureOutTarget.textContent = this.formatRemainingMonths(ap.remainingMonths)
     }
+
+    // Keep the main amount control aligned with "Principal left" once an EMI due date has passed (e.g. after the 15th).
+    if (this.hasAmountInputTarget && this.hasAmountRangeTarget) {
+      const editing = document.activeElement === this.amountInputTarget
+      if (!editing) {
+        const displayAmt = Math.max(0, Math.round(ap.outstanding))
+        this.amountInputTarget.value = displayAmt.toLocaleString("en-IN")
+        this.amountRangeTarget.value = String(displayAmt)
+      }
+    }
+
+    this.syncSaveLoanUi()
 
     this.updateDonut(ap.outstanding, ap.totalPayRem)
     this.renderYearly({

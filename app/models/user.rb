@@ -7,6 +7,7 @@ class User < ApplicationRecord
 
   validates :name, presence: true
   validates :email, presence: true, uniqueness: { case_sensitive: false }
+  validates :account_balance, numericality: { greater_than_or_equal_to: 0 }
 
   private
 

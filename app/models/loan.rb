@@ -2,6 +2,7 @@ class Loan < ApplicationRecord
   belongs_to :user
 
   has_many :prepayments, dependent: :destroy
+  has_many :emi_deductions, dependent: :destroy
 
   validates :title, uniqueness: { scope: :user_id }, allow_blank: true
 

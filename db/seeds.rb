@@ -29,6 +29,7 @@ brothers = brother_specs.map do |spec|
     user.name = spec[:name]
     user.password = "password"
     user.password_confirmation = "password"
+    user.account_balance = 10_000_000
     user.save!
   elsif user.name != spec[:name]
     user.update!(name: spec[:name])

@@ -17,6 +17,19 @@
         <div><strong>Outstanding:</strong> <%= format_inr(@loan.outstanding_principal) %></div>
       </div>
 
+      <% if logged_in? && @loan.user_id == current_user.id %>
+        <h3 style="margin-top: 14px;">EMI auto-debits (account)</h3>
+        <% if @loan.emi_deductions.any? %>
+          <ul>
+            <% @loan.emi_deductions.order(due_on: :desc, id: :desc).each do |d| %>
+              <li><%= format_inr(d.amount) %> on <%= d.due_on.strftime("%d %b %Y") %></li>
+            <% end %>
+          </ul>
+        <% else %>
+          <p>No EMI debits recorded yet (runs daily when a due date is reached).</p>
+        <% end %>
+      <% end %>
+
       <h3 style="margin-top: 14px;">Prepayments</h3>
       <% if @loan.prepayments.any? %>
         <ul>

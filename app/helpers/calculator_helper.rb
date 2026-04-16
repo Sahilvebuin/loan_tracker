@@ -1,6 +1,20 @@
 module CalculatorHelper
   EMI_PAY_DAY = 15
 
+  # Calendar month of the first EMI (15th): first 15th on or after +start_date+ (disbursal after mid-month → next month).
+  def emi_schedule_anchor_year_month(start_date)
+    d = start_date.to_date
+    y = d.year
+    m = d.month
+    fifteenth = Date.new(y, m, EMI_PAY_DAY)
+    if d > fifteenth
+      n = d.beginning_of_month + 1.month
+      [ n.year, n.month ]
+    else
+      [ y, m ]
+    end
+  end
+
   # Same EMI formula as app/javascript/controllers/loan_calculator_controller.js
   def loan_emi(principal, annual_rate_percent, months)
     p = principal.to_f

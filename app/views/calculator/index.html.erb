@@ -34,6 +34,7 @@
         <% fixed_emi = loan_emi(home_slice[:principal].to_f, home_slice[:annual_interest_rate].to_f, home_slice[:term_months].to_i) %>
         <% schedule_sy, schedule_sm = Date.current.year, Date.current.month %>
         <% met = met_base.merge(loan_kpis_after_autopay(met_base[:outstanding_principal], home_slice[:annual_interest_rate].to_f, met_base[:remaining_months], met_base[:emi], start_year: schedule_sy, start_month: schedule_sm)) %>
+        <% amount_display = [ met[:outstanding_principal].to_f, 0 ].max.round %>
         <% out_principal = (home_slice[:outstanding_principal].presence || home_slice[:principal]).to_f %>
         <% yr_rows = yearly_amortization_rows(out_principal, home_slice[:annual_interest_rate].to_f, met_base[:remaining_months], start_year: schedule_sy, start_month: schedule_sm, basis: :calendar, fixed_payment: fixed_emi) %>
         <% p_pct, i_pct = payment_breakup_percentages(met[:outstanding_principal], met[:total_interest]) %>
@@ -73,14 +74,14 @@
                   <div class="lc-field__head">
                     <div class="lc-field__label" data-loan-calculator-target="amountLabel">Home Loan Amount</div>
                     <div class="lc-inputgroup">
-                      <input class="lc-input" inputmode="numeric" value="<%= number_with_delimiter(ui[:principal].to_i) %>" data-loan-calculator-target="amountInput" data-action="input->loan-calculator#syncFromAmountInput">
+                      <input class="lc-input" inputmode="numeric" value="<%= number_with_delimiter(amount_display) %>" data-loan-calculator-target="amountInput" data-action="input->loan-calculator#syncFromAmountInput">
                       <span class="lc-addon">₹</span>
                     </div>
                     <% if logged_in? && (home_save_form_id.present? || add_save_form_id.present?) %>
                       <button type="submit" class="lc-btn lc-btn--ghost lc-btn--tiny" data-loan-calculator-target="amountSaveBtn">Save</button>
                     <% end %>
                   </div>
-                  <input class="lc-range" type="range" min="0" max="<%= ui[:amount_max] %>" step="1000" value="<%= ui[:principal].to_i %>" data-loan-calculator-target="amountRange" data-action="input->loan-calculator#syncFromAmountRange">
+                  <input class="lc-range" type="range" min="0" max="<%= ui[:amount_max] %>" step="1000" value="<%= amount_display %>" data-loan-calculator-target="amountRange" data-action="input->loan-calculator#syncFromAmountRange">
                   <div class="lc-range__marks" data-loan-calculator-target="amountMarks"><span>0</span><span>25L</span><span>50L</span><span>75L</span><span>1Cr</span><span>1.5Cr</span><span>2Cr</span></div>
                 </div>
 

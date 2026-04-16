@@ -10,7 +10,19 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_07_080000) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_15_120001) do
+  # These are extensions that must be enabled in order to support this database
+  enable_extension "pg_catalog.plpgsql"
+
+  create_table "emi_deductions", force: :cascade do |t|
+    t.decimal "amount", precision: 15, scale: 2, null: false
+    t.datetime "created_at", null: false
+    t.date "due_on", null: false
+    t.integer "loan_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["loan_id", "due_on"], name: "index_emi_deductions_on_loan_id_and_due_on", unique: true
+  end
+
   create_table "loan_calculator_presets", force: :cascade do |t|
     t.integer "amount_slider_max"
     t.decimal "annual_interest_rate", precision: 6, scale: 3
@@ -48,6 +60,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_07_080000) do
   end
 
   create_table "users", force: :cascade do |t|
+    t.decimal "account_balance", precision: 15, scale: 2, default: "0.0", null: false
     t.datetime "created_at", null: false
     t.string "email", null: false
     t.string "name", null: false
@@ -56,6 +69,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_07_080000) do
     t.index ["email"], name: "index_users_on_email", unique: true
   end
 
+  add_foreign_key "emi_deductions", "loans"
   add_foreign_key "loans", "users"
   add_foreign_key "prepayments", "loans"
 end

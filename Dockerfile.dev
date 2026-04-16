@@ -1,0 +1,50 @@
+# Development image for docker-compose (see docker-compose.yml).
+# Full Bookworm image (not slim) already includes compilers, git, curl — we only apt-install DB/Vips libs.
+#
+# If apt is slow or hangs on deb.debian.org (common with broken IPv6):
+#   1) Put this in .env next to docker-compose.yml:
+#        APT_DEBIAN_HOST=mirrors.aliyun.com
+#      (or another mirror hostname you trust), then: docker compose build --no-cache web
+#   2) Or one-shot: APT_DEBIAN_HOST=mirrors.aliyun.com docker compose build --no-cache web
+#
+# Alternative: APT_MIRROR=https://mirrors.aliyun.com/debian (main archive only; prefer APT_DEBIAN_HOST).
+FROM docker.io/library/ruby:3.3.7-bookworm
+
+ARG APT_DEBIAN_HOST=
+ARG APT_MIRROR=
+
+RUN set -eux; \
+  if [ -n "${APT_DEBIAN_HOST}" ] && [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+    sed -i "s/deb.debian.org/${APT_DEBIAN_HOST}/g" /etc/apt/sources.list.d/debian.sources; \
+  elif [ -n "${APT_MIRROR}" ] && [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+    sed -i "s|http://deb.debian.org/debian|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources; \
+    sed -i "s|https://deb.debian.org/debian|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources; \
+  fi; \
+  printf '%s\n' \
+    'Acquire::ForceIPv4 "true";' \
+    'Acquire::Retries "6";' \
+    'Acquire::http::Timeout "120";' \
+    'Acquire::https::Timeout "120";' \
+    > /etc/apt/apt.conf.d/99docker-loan-calculator; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends \
+    libpq-dev \
+    libvips-dev \
+  ; \
+  rm -rf /var/lib/apt/lists/*
+
+RUN sed -i 's/deb.debian.org/ftp.debian.org/g' /etc/apt/sources.list
+RUN sed -i 's/deb.debian.org/mirrors.piconets.webwerks.in/g' /etc/apt/sources.list
+WORKDIR /rails
+
+ENV BUNDLE_PATH="/usr/local/bundle" \
+    BUNDLE_JOBS=4 \
+    BUNDLE_RETRY=3
+
+COPY Gemfile Gemfile.lock ./
+RUN bundle install
+
+# App code is bind-mounted at runtime; this keeps the image useful even without a mount.
+COPY . .
+
+EXPOSE 3000
