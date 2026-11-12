@@ -1,46 +1,248 @@
+<% content_for :title, "#{@loan.title.presence || "Loan"} · Overview" %>
+<% repaid_pct = loan_repaid_percent(@loan) %>
+<% still_owe = @loan.ledger_outstanding %>
+
 <div class="lc-page">
   <div class="lc-shell">
     <header class="lc-header">
       <div>
-        <div class="lc-title"><%= @loan.title.presence || "Loan ##{@loan.id}" %></div>
-        <div class="lc-subtitle"><%= format_inr(@loan.principal) %> · <%= @loan.annual_interest_rate %>% · <%= @loan.term_months %> months</div>
+        <div class="lc-dash__eyebrow">Your loan account</div>
+        <div class="lc-title">
+          <%= @loan.title.presence || "Loan ##{@loan.id}" %>
+          <span class="lc-status lc-status--<%= @loan.status %>"><%= @loan.status.to_s.titleize %></span>
+        </div>
+        <div class="lc-subtitle">
+          For <strong><%= @loan.primary_borrower&.name || @loan.user.name %></strong>
+          <% if @loan.lender_name.present? %> · Bank: <%= @loan.lender_name %><% end %>
+          <% if @loan.account_number.present? %> · A/c <%= @loan.account_number %><% end %>
+        </div>
       </div>
-      <nav class="lc-nav">
-        <%= link_to "Calculator", root_path, class: "lc-nav__link" %>
-        <%= link_to "Loans", loans_path, class: "lc-nav__link" %>
-      </nav>
+      <%= render "loans/loan_nav", loan: @loan, active: :overview %>
     </header>
 
-    <div class="lc-card" style="padding: 16px;">
-      <div style="display:flex; gap: 10px; flex-wrap: wrap;">
-        <div><strong>Start date:</strong> <%= @loan.start_date %></div>
-        <div><strong>Outstanding:</strong> <%= format_inr(@loan.outstanding_principal) %></div>
+    <div class="lc-dash">
+      <section class="lc-guide">
+        <div class="lc-guide__title">How to use this loan account</div>
+        <div class="lc-guide__grid">
+          <div class="lc-guide__item is-here">
+            <strong>1. Overview</strong>
+            <span>See how much you borrowed, how much is left, and what you’ve paid so far.</span>
+          </div>
+          <a class="lc-guide__item" href="<%= loan_loan_emi_schedules_path(@loan) %>">
+            <strong>2. EMI plan</strong>
+            <span>Month-by-month breakup: interest vs principal for every installment.</span>
+          </a>
+          <a class="lc-guide__item" href="<%= loan_loan_payments_path(@loan) %>">
+            <strong>3. Money trail</strong>
+            <span>Actual payments, prepayments, monthly &amp; financial-year totals.</span>
+          </a>
+        </div>
+      </section>
+
+      <section class="lc-story">
+        <div class="lc-story__col">
+          <div class="lc-story__label">You borrowed</div>
+          <div class="lc-story__value"><%= format_inr(@loan.original_principal) %></div>
+          <div class="lc-story__note">This original amount never changes</div>
+        </div>
+        <div class="lc-story__arrow" aria-hidden="true">→</div>
+        <div class="lc-story__col lc-story__col--paid">
+          <div class="lc-story__label">Principal repaid</div>
+          <div class="lc-story__value"><%= format_inr(@loan.total_principal_paid_ledger) %></div>
+          <div class="lc-story__note"><%= repaid_pct %>% of the loan cleared</div>
+        </div>
+        <div class="lc-story__arrow" aria-hidden="true">→</div>
+        <div class="lc-story__col lc-story__col--owe">
+          <div class="lc-story__label">Still left to pay</div>
+          <div class="lc-story__value"><%= format_inr(still_owe) %></div>
+          <div class="lc-story__note"><%= loan_years_months_label(@remaining_months) %> remaining</div>
+        </div>
+      </section>
+
+      <section class="lc-dash__hero">
+        <div class="lc-progress">
+          <div class="lc-progress__head">
+            <strong>Repayment progress</strong>
+            <span><%= repaid_pct %>% principal repaid</span>
+          </div>
+          <div class="lc-progress__track" role="progressbar" aria-valuenow="<%= repaid_pct %>" aria-valuemin="0" aria-valuemax="100">
+            <div class="lc-progress__fill" style="width: <%= repaid_pct %>%;"></div>
+          </div>
+          <div class="lc-progress__legend">
+            <span class="lc-dot lc-dot--principal"></span> Principal repaid
+            <span class="lc-dot lc-dot--balance"></span> Outstanding left
+          </div>
+        </div>
+
+        <div class="lc-stat-grid">
+          <div class="lc-stat">
+            <div class="lc-stat__label">Monthly EMI</div>
+            <div class="lc-stat__value"><%= @loan.emi_amount.present? ? format_inr(@loan.emi_amount) : "—" %></div>
+            <div class="lc-stat__hint">Auto-due on the <%= @loan.emi_due_day %><sup>th</sup> each month</div>
+          </div>
+          <div class="lc-stat">
+            <div class="lc-stat__label">Interest rate now</div>
+            <div class="lc-stat__value"><%= number_with_precision(@loan.annual_interest_rate, precision: 2) %>%</div>
+            <div class="lc-stat__hint"><%= @loan.interest_rate_type.to_s.titleize %> rate</div>
+          </div>
+          <div class="lc-stat lc-stat--green">
+            <div class="lc-stat__label">Next payment</div>
+            <div class="lc-stat__value" style="font-size:1.15rem;">
+              <% if @next_emi %>
+                <%= @next_emi.due_on.strftime("%d %b %Y") %>
+              <% else %>
+                All clear
+              <% end %>
+            </div>
+            <div class="lc-stat__hint">
+              <% if @next_emi %>
+                Pay <%= format_inr(@next_emi.scheduled_emi) %> · <%= schedule_status_plain(@next_emi.status) %>
+              <% else %>
+                No upcoming EMI
+              <% end %>
+            </div>
+          </div>
+        </div>
+
+        <div class="lc-actions" style="margin-top:4px;">
+          <%= link_to "See full EMI plan", loan_loan_emi_schedules_path(@loan), class: "lc-btn" %>
+          <%= link_to "See money trail", loan_loan_payments_path(@loan), class: "lc-btn lc-btn--secondary" %>
+          <%= link_to "Try what-if on calculator", root_path, class: "lc-btn lc-btn--ghost" %>
+        </div>
+      </section>
+
+      <section class="lc-section">
+        <div class="lc-section__head">
+          <div>
+            <h2 class="lc-section__title">Where did your money go?</h2>
+            <p class="lc-section__sub">Every rupee paid is split into principal (loan reduction) and interest (bank charge).</p>
+          </div>
+        </div>
+        <div class="lc-breakup">
+          <div class="lc-breakup__card lc-breakup__card--principal">
+            <div class="lc-breakup__label">Went to principal</div>
+            <div class="lc-breakup__value"><%= format_inr(@loan.total_principal_paid_ledger) %></div>
+            <div class="lc-breakup__note">This reduced your loan balance</div>
+          </div>
+          <div class="lc-breakup__card lc-breakup__card--interest">
+            <div class="lc-breakup__label">Went to interest</div>
+            <div class="lc-breakup__value"><%= format_inr(@loan.total_interest_paid_ledger) %></div>
+            <div class="lc-breakup__note">Cost of borrowing</div>
+          </div>
+          <div class="lc-breakup__card lc-breakup__card--prepay">
+            <div class="lc-breakup__label">Extra prepayments</div>
+            <div class="lc-breakup__value"><%= format_inr(@loan.total_prepayment_ledger) %></div>
+            <div class="lc-breakup__note">Over and above normal EMI</div>
+          </div>
+          <div class="lc-breakup__card lc-breakup__card--total">
+            <div class="lc-breakup__label">Total cash paid</div>
+            <div class="lc-breakup__value"><%= format_inr(@loan.total_amount_paid_ledger) %></div>
+            <div class="lc-breakup__note">EMI + prepay + charges</div>
+          </div>
+        </div>
+      </section>
+
+      <div class="lc-split">
+        <section class="lc-section">
+          <div class="lc-section__head">
+            <div>
+              <h2 class="lc-section__title">Loan details (master record)</h2>
+              <p class="lc-section__sub">Bank-style permanent info — kept even after the loan is closed.</p>
+            </div>
+          </div>
+          <div class="lc-meta-grid">
+            <div class="lc-meta"><span class="lc-meta__label">Borrower</span><span class="lc-meta__value"><%= @loan.primary_borrower&.name || @loan.user.name %></span></div>
+            <div class="lc-meta"><span class="lc-meta__label">Loan type</span><span class="lc-meta__value"><%= @loan.loan_type.to_s.titleize.presence || "—" %></span></div>
+            <div class="lc-meta"><span class="lc-meta__label">Lender / bank</span><span class="lc-meta__value"><%= @loan.lender_name.presence || "Not set" %></span></div>
+            <div class="lc-meta"><span class="lc-meta__label">Account number</span><span class="lc-meta__value"><%= @loan.account_number.presence || "Not set" %></span></div>
+            <div class="lc-meta"><span class="lc-meta__label">Sanctioned amount</span><span class="lc-meta__value"><%= format_inr(@loan.sanctioned_amount || @loan.principal) %></span></div>
+            <div class="lc-meta"><span class="lc-meta__label">Disbursed amount</span><span class="lc-meta__value"><%= format_inr(@loan.disbursed_amount || @loan.principal) %></span></div>
+            <div class="lc-meta"><span class="lc-meta__label">Loan start</span><span class="lc-meta__value"><%= @loan.start_date.strftime("%d %b %Y") %></span></div>
+            <div class="lc-meta"><span class="lc-meta__label">First EMI date</span><span class="lc-meta__value"><%= @loan.emi_start_date&.strftime("%d %b %Y") || "—" %></span></div>
+            <div class="lc-meta"><span class="lc-meta__label">Original tenure</span><span class="lc-meta__value"><%= loan_years_months_label(@loan.term_months) %></span></div>
+            <div class="lc-meta"><span class="lc-meta__label">Processing fee</span><span class="lc-meta__value"><%= format_inr(@loan.processing_fee) %></span></div>
+            <div class="lc-meta"><span class="lc-meta__label">Insurance</span><span class="lc-meta__value"><%= format_inr(@loan.insurance_amount) %></span></div>
+            <div class="lc-meta"><span class="lc-meta__label">Other charges</span><span class="lc-meta__value"><%= format_inr(@loan.other_initial_charges) %></span></div>
+          </div>
+        </section>
+
+        <section class="lc-section">
+          <div class="lc-section__head">
+            <div>
+              <h2 class="lc-section__title">Interest rate over time</h2>
+              <p class="lc-section__sub">If the bank changes the rate, old rates stay in history.</p>
+            </div>
+          </div>
+          <% if @rates.any? %>
+            <div class="lc-tablewrap lc-tablewrap--bank">
+              <table class="lc-table lc-table--bank">
+                <thead>
+                  <tr>
+                    <th>Started</th>
+                    <th>Ended</th>
+                    <th class="num">Rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% @rates.each do |row| %>
+                    <tr>
+                      <td><%= row.effective_from.strftime("%d %b %Y") %></td>
+                      <td>
+                        <% if row.effective_to %>
+                          <%= row.effective_to.strftime("%d %b %Y") %>
+                        <% else %>
+                          <span class="lc-status lc-status--active">In use now</span>
+                        <% end %>
+                      </td>
+                      <td class="num"><%= row.interest_rate %>%</td>
+                    </tr>
+                  <% end %>
+                </tbody>
+              </table>
+            </div>
+          <% else %>
+            <div class="lc-empty">No rate history stored yet.</div>
+          <% end %>
+        </section>
       </div>
 
-      <% if logged_in? && @loan.user_id == current_user.id %>
-        <h3 style="margin-top: 14px;">EMI auto-debits (account)</h3>
-        <% if @loan.emi_deductions.any? %>
-          <ul>
-            <% @loan.emi_deductions.order(due_on: :desc, id: :desc).each do |d| %>
-              <li><%= format_inr(d.amount) %> on <%= d.due_on.strftime("%d %b %Y") %></li>
-            <% end %>
-          </ul>
-        <% else %>
-          <p>No EMI debits recorded yet (runs daily when a due date is reached).</p>
-        <% end %>
-      <% end %>
-
-      <h3 style="margin-top: 14px;">Prepayments</h3>
-      <% if @loan.prepayments.any? %>
-        <ul>
-          <% @loan.prepayments.order(paid_on: :desc, id: :desc).each do |pp| %>
-            <li><%= format_inr(pp.amount) %> on <%= pp.paid_on %></li>
-          <% end %>
-        </ul>
-      <% else %>
-        <p>No prepayments yet.</p>
+      <% if @recent_payments.any? %>
+        <section class="lc-section">
+          <div class="lc-section__head">
+            <div>
+              <h2 class="lc-section__title">Latest money movements</h2>
+              <p class="lc-section__sub">Most recent payments from your stored ledger</p>
+            </div>
+            <%= link_to "Full money trail →", loan_loan_payments_path(@loan), class: "lc-nav__link" %>
+          </div>
+          <div class="lc-tablewrap lc-tablewrap--bank">
+            <table class="lc-table lc-table--bank">
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th class="lc-col-type">What</th>
+                  <th class="num">You paid</th>
+                  <th class="num">Principal</th>
+                  <th class="num">Interest</th>
+                  <th class="num">Balance left</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% @recent_payments.each do |p| %>
+                  <tr>
+                    <td><%= p.paid_on.strftime("%d %b %Y") %></td>
+                    <td class="lc-col-type"><%= payment_type_plain(p.payment_type) %></td>
+                    <td class="num"><%= format_inr(p.amount) %></td>
+                    <td class="num"><%= format_inr(p.principal_amount) %></td>
+                    <td class="num"><%= format_inr(p.interest_amount) %></td>
+                    <td class="num"><%= format_inr(p.balance_after) %></td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+        </section>
       <% end %>
     </div>
   </div>
 </div>
-

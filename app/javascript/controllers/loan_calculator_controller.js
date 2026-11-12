@@ -117,7 +117,7 @@ function countAutopayEmisAlreadyPassed(startYear, startMonth, maxMonths) {
   while (paid < maxMonths) {
     const due = new Date(y, mo - 1, EMI_PAY_DAY)
     due.setHours(0, 0, 0, 0)
-    if (today <= due) break
+    if (today < due) break
     paid += 1
     mo += 1
     if (mo > 12) {
@@ -126,6 +126,35 @@ function countAutopayEmisAlreadyPassed(startYear, startMonth, maxMonths) {
     }
   }
   return paid
+}
+
+/**
+ * Outstanding balance and remaining totals after autopay EMIs (same slice as yearly table).
+ * +full+ schedule is built from pre-autopay principal + tenure; +skip+ rows are treated as already paid.
+ */
+function scheduleFromTail(outstanding, annualRatePercent, months, fixedPayment, startYear, startMonth) {
+  const rows = buildMonthSchedule({
+    principal: outstanding,
+    annualRatePercent,
+    months,
+    startYear,
+    startMonth,
+    fixedPayment,
+  })
+  let totalPayRem = 0
+  let totalIntRem = 0
+  for (const r of rows) {
+    totalPayRem += r.totalPaid
+    totalIntRem += r.interestPaid
+  }
+  return {
+    full: rows,
+    skip: 0,
+    outstanding,
+    remainingMonths: rows.length,
+    totalPayRem,
+    totalIntRem,
+  }
 }
 
 /**
@@ -212,22 +241,42 @@ function monthCellLabel(m) {
   return `${String(d).padStart(2, "0")} ${MONTH_SHORT[m.month - 1]} ${m.calYear}`
 }
 
+// Per brother (half of the bank's combined figures). Revised from 15 Nov 2026 after repo +0.25%:
+// home ₹51,44,625 @ 7.95% · EMI ₹52,620 · 159 mo; additional ₹9,64,377 @ 7.80% · EMI ₹9,580 · 164 mo.
 const FALLBACK = {
   home: {
-    principal: 2_637_000,
-    outstanding_principal: 2_637_000,
+    principal: 2_637_592.17,
+    outstanding_principal: 2_572_312.5,
     recorded_prepayment_total: 0,
     amount_slider_max: 20_000_000,
-    annual_interest_rate: 7.7,
+    annual_interest_rate: 7.95,
     term_months: 165,
+    remaining_months: 159,
+    emi_amount: 26_310,
+    emi_basis_principal: 2_572_312.5,
+    emi_basis_term_months: 159,
+    balance_from_loan: true,
+    schedule_start_year: 2026,
+    schedule_start_month: 4,
+    tail_start_year: 2026,
+    tail_start_month: 11,
   },
   additional: {
-    principal: 493_693,
-    outstanding_principal: 493_693,
+    principal: 493_615.07,
+    outstanding_principal: 482_188.5,
     recorded_prepayment_total: 0,
     amount_slider_max: 5_000_000,
-    annual_interest_rate: 7.55,
+    annual_interest_rate: 7.8,
     term_months: 172,
+    remaining_months: 164,
+    emi_amount: 4_790,
+    emi_basis_principal: 482_188.5,
+    emi_basis_term_months: 164,
+    balance_from_loan: true,
+    schedule_start_year: 2026,
+    schedule_start_month: 4,
+    tail_start_year: 2026,
+    tail_start_month: 11,
   },
 }
 
@@ -316,10 +365,12 @@ export default class extends Controller {
     "appliedPrepaymentsWrap",
     "appliedPrepaymentsList",
     "saveLoanForm",
+    "applyPrepaymentBtn",
     "savePrepaymentForm",
     "savedPrepaymentsWrap",
     "effectivePrincipalOut",
     "effectivePrincipalNote",
+    "effectivePrincipalDetail",
     "remainingTenureOut",
     "scheduleStart",
     "scheduleBasis",
@@ -438,31 +489,56 @@ export default class extends Controller {
   }
 
   syncSavePrepaymentUi() {
-    // Amount input should submit to the correct loan's form (home vs additional).
     const key = this.currentKey()
     const forms = this.savePrepaymentFormTargets || []
     forms.forEach((f) => {
       const type = f.dataset.loanType
-      const show = type === key
-      f.hidden = !show
+      f.hidden = type !== key
+      if (!f.dataset.prepaySubmitBound) {
+        f.dataset.prepaySubmitBound = "1"
+        f.addEventListener("submit", (event) => this.beforeSavePrepayment(event, f))
+      }
     })
     const wraps = this.savedPrepaymentsWrapTargets || []
     wraps.forEach((w) => {
-      const type = w.dataset.loanType
-      const show = type === key
-      w.hidden = !show
+      w.hidden = w.dataset.loanType !== key
     })
 
     const activeForm = forms.find((f) => f.dataset.loanType === key)
-    if (!this.hasPrepaymentInputTarget) return
-    if (activeForm && activeForm.id) {
-      this.prepaymentInputTarget.setAttribute("name", "prepayment[amount]")
-      this.prepaymentInputTarget.setAttribute("form", activeForm.id)
-      if (this.hasPrepaymentNoteInputTarget) {
-        this.prepaymentNoteInputTarget.setAttribute("name", "prepayment[notes]")
-        this.prepaymentNoteInputTarget.setAttribute("form", activeForm.id)
-      }
+    if (this.hasApplyPrepaymentBtnTarget) {
+      this.applyPrepaymentBtnTarget.textContent = activeForm ? "Save prepayment" : "Preview prepayment"
     }
+  }
+
+  fillPrepaymentForm(form) {
+    const amount = this.hasPrepaymentInputTarget ? Math.max(0, toNumber(this.prepaymentInputTarget.value, 0)) : 0
+    const paidOn =
+      this.hasPrepaymentDateInputTarget && this.prepaymentDateInputTarget.value
+        ? this.prepaymentDateInputTarget.value
+        : new Date().toISOString().slice(0, 10)
+    const notes =
+      this.hasPrepaymentNoteInputTarget && this.prepaymentNoteInputTarget.value
+        ? String(this.prepaymentNoteInputTarget.value).trim()
+        : ""
+
+    const amountField = form.querySelector('[data-prepay-field="amount"]')
+    const paidOnField = form.querySelector('[data-prepay-field="paid_on"]')
+    const notesField = form.querySelector('[data-prepay-field="notes"]')
+    if (amountField) amountField.value = String(amount)
+    if (paidOnField) paidOnField.value = paidOn
+    if (notesField) notesField.value = notes
+    return amount
+  }
+
+  beforeSavePrepayment(event, form) {
+    const key = form.dataset.loanType === "additional" ? "additional" : "home"
+    const amt = this.fillPrepaymentForm(form)
+    if (amt <= 0.01) {
+      event.preventDefault()
+      return
+    }
+    this.appliedPrepayments[key] = []
+    this.persistAppliedPrepayments()
   }
 
   applyDefaults(type) {
@@ -479,7 +555,7 @@ export default class extends Controller {
     this.emiBasisBySlot[loanType] = principal
     const max = Number(slot.amount_slider_max) || fb.amount_slider_max
     const rate = Number(slot.annual_interest_rate) || fb.annual_interest_rate
-    const termMonths = Number(slot.term_months) || fb.term_months
+    const displayTermMonths = this.defaultTenureMonths(slot, loanType)
 
     this.amountRangeTarget.max = String(max)
     this.updateAmountMarks(max)
@@ -487,12 +563,22 @@ export default class extends Controller {
     this.rateInputTarget.value = String(rate)
     this.rateRangeTarget.value = String(rate)
 
-    const tenure = this.tenureFromMonths(termMonths)
+    const tenure = this.tenureFromMonths(displayTermMonths)
     this.tenureUnit = tenure.unit
     this.tenureUnitBtnTargets.forEach((b) => b.classList.toggle("is-active", b.dataset.unit === tenure.unit))
     this.tenureInputTarget.value = String(tenure.value)
     this.tenureRangeTarget.max = String(tenure.max)
     this.tenureRangeTarget.value = String(tenure.value)
+
+    this.syncScheduleStartFromSlot(slot)
+  }
+
+  syncScheduleStartFromSlot(slot) {
+    if (!this.hasScheduleStartTarget || !slot) return
+    const sy = Number(slot.schedule_start_year)
+    const sm = Number(slot.schedule_start_month)
+    if (!Number.isFinite(sy) || !Number.isFinite(sm) || sm < 1 || sm > 12) return
+    this.scheduleStartTarget.value = `${String(sy).padStart(4, "0")}-${String(sm).padStart(2, "0")}`
   }
 
   updateAmountMarks(max) {
@@ -573,9 +659,85 @@ export default class extends Controller {
     return list.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
   }
 
-  computeSchedule({ loanAmount, annualRatePercent, totalMonths, totalPrepay }) {
-    const outstanding = Math.max(0, loanAmount - totalPrepay)
-    const monthlyEmi = emi(loanAmount, annualRatePercent, totalMonths)
+  /**
+   * Principal left for schedule math.
+   * Loan from DB: outstanding_principal already nets EMIs + saved prepays — only subtract session-applied.
+   * Demo / no loan: sanctioned − recorded − applied.
+   */
+  workingOutstanding(extra = 0) {
+    const slot = this.currentSlot()
+    const applied = this.appliedExtraTotal() + Math.max(0, Number(extra) || 0)
+    if (slot.balance_from_loan) {
+      const base = Number(slot.outstanding_principal)
+      const recorded = Number(slot.recorded_prepayment_total || 0)
+      const fallback = Math.max(0, this.emiBasisPrincipal() - recorded)
+      const server = Number.isFinite(base) && base >= 0 ? base : fallback
+      return Math.max(0, server - applied)
+    }
+    const recorded = Number(slot.recorded_prepayment_total || 0)
+    return Math.max(0, this.emiBasisPrincipal() - recorded - applied)
+  }
+
+  /** Outstanding before session-only prepays (what the amount slider should mirror). */
+  serverOutstanding() {
+    const slot = this.currentSlot()
+    if (slot.balance_from_loan) {
+      const base = Number(slot.outstanding_principal)
+      if (Number.isFinite(base) && base >= 0) return base
+    }
+    const recorded = Number(slot.recorded_prepayment_total || 0)
+    return Math.max(0, this.emiBasisPrincipal() - recorded)
+  }
+
+  // Read the typed boxes first: sliders snap to their step (7.55% → 7.6%) and cap at their max.
+  annualRate() {
+    const rate = toNumber(this.rateInputTarget.value, 0)
+    return rate > 0 ? rate : toNumber(this.rateRangeTarget.value, 0)
+  }
+
+  /** Tenure field value in months. */
+  tenureMonths() {
+    let tenure = toNumber(this.tenureInputTarget.value, 0)
+    if (tenure <= 0) tenure = toNumber(this.tenureRangeTarget.value, 0)
+    return this.tenureUnit === "yr" ? tenure * 12 : tenure
+  }
+
+  /** Months the tenure field starts at: months left for a saved loan, else the sanctioned term. */
+  defaultTenureMonths(slot = this.currentSlot(), key = this.currentKey()) {
+    const sanctionedTermMonths = Number(slot.term_months) || FALLBACK[key].term_months
+    return slot.balance_from_loan && slot.remaining_months ? Number(slot.remaining_months) : sanctionedTermMonths
+  }
+
+  tenureEdited(months) {
+    return months > 0 && months !== this.defaultTenureMonths()
+  }
+
+  /**
+   * Tenure untouched → the loan's own EMI: the bank's current EMI (revised after a rate change) when the
+   * rate is unchanged, else the formula on the current EMI basis (revision opening / remaining tenure).
+   * Amount edited → sanctioned-amount over sanctioned-term what-if.
+   * Tenure edited → principal left (before session prepays) spread over the new tenure.
+   */
+  monthlyEmi(annualRatePercent, months) {
+    if (this.tenureEdited(months)) return emi(this.serverOutstanding(), annualRatePercent, months)
+    const key = this.currentKey()
+    const slot = this.currentSlot()
+    const sanctioned = this.emiBasisPrincipal()
+    const amountUntouched = Math.abs(sanctioned - (Number(slot.principal) || FALLBACK[key].principal)) < 0.5
+    if (amountUntouched) {
+      const bankEmi = Number(slot.emi_amount)
+      if (bankEmi > 0 && Math.abs(annualRatePercent - Number(slot.annual_interest_rate)) < 1e-9) return bankEmi
+      const basisPrincipal = Number(slot.emi_basis_principal)
+      const basisMonths = Number(slot.emi_basis_term_months)
+      if (basisPrincipal > 0 && basisMonths > 0) return emi(basisPrincipal, annualRatePercent, basisMonths)
+    }
+    const sanctionedTermMonths = Number(slot.term_months) || months
+    return emi(sanctioned, annualRatePercent, sanctionedTermMonths)
+  }
+
+  computeSchedule({ annualRatePercent, totalMonths, extra = 0 }) {
+    const outstanding = this.workingOutstanding(extra)
+    const monthlyEmi = this.monthlyEmi(annualRatePercent, totalMonths)
     const scheduleMonths = outstanding <= 0.01 ? 0 : monthsFromFixedEmi(outstanding, annualRatePercent, monthlyEmi)
     const totalInterest = outstanding <= 0.01 ? 0 : Math.max(0, monthlyEmi * scheduleMonths - outstanding)
     return { outstanding, monthlyEmi, scheduleMonths, totalInterest }
@@ -583,12 +745,8 @@ export default class extends Controller {
 
   clampPrepaymentToLoanAmount() {
     if (!this.hasPrepaymentInputTarget) return
-    const slot = this.currentSlot()
-    const recorded = Number(slot.recorded_prepayment_total || 0)
-    const loanAmt = this.emiBasisPrincipal()
     let prep = Math.max(0, toNumber(this.prepaymentInputTarget.value, 0))
-    const applied = this.appliedExtraTotal()
-    const maxExtra = Math.max(0, loanAmt - recorded - applied)
+    const maxExtra = this.workingOutstanding(0)
     if (prep > maxExtra) this.prepaymentInputTarget.value = String(maxExtra)
   }
 
@@ -711,31 +869,37 @@ export default class extends Controller {
     this.clampPrepaymentToLoanAmount()
     const appliedAmt = this.hasPrepaymentInputTarget ? Math.max(0, toNumber(this.prepaymentInputTarget.value, 0)) : 0
     if (appliedAmt <= 0.01) return
+
+    const key = this.currentKey()
+    this.syncSavePrepaymentUi()
+    const forms = this.savePrepaymentFormTargets || []
+    const activeForm = forms.find((f) => f.dataset.loanType === key)
+    if (activeForm) {
+      const amt = this.fillPrepaymentForm(activeForm)
+      if (amt <= 0.01) return
+      if (typeof activeForm.requestSubmit === "function") {
+        activeForm.requestSubmit()
+      } else {
+        activeForm.submit()
+      }
+      return
+    }
+
     const paidOn = this.hasPrepaymentDateInputTarget && this.prepaymentDateInputTarget.value ? this.prepaymentDateInputTarget.value : ""
     const notes = this.hasPrepaymentNoteInputTarget && this.prepaymentNoteInputTarget.value ? String(this.prepaymentNoteInputTarget.value).trim() : ""
-    const key = this.currentKey()
 
-    const slot = this.currentSlot()
-    const recorded = Number(slot.recorded_prepayment_total || 0)
-    let loanAmount = this.emiBasisPrincipal()
-    let rate = toNumber(this.rateRangeTarget.value, 0)
-    let tenure = toNumber(this.tenureRangeTarget.value, 0)
-    if (rate <= 0) rate = toNumber(this.rateInputTarget.value, 0)
-    if (tenure <= 0) tenure = toNumber(this.tenureInputTarget.value, 0)
-    const months = this.tenureUnit === "yr" ? tenure * 12 : tenure
+    const rate = this.annualRate()
+    const months = this.tenureMonths()
 
-    const appliedBefore = this.appliedExtraTotal()
     const before = this.computeSchedule({
-      loanAmount,
       annualRatePercent: rate,
       totalMonths: months,
-      totalPrepay: recorded + appliedBefore,
+      extra: 0,
     })
     const after = this.computeSchedule({
-      loanAmount,
       annualRatePercent: rate,
       totalMonths: months,
-      totalPrepay: recorded + appliedBefore + appliedAmt,
+      extra: appliedAmt,
     })
     const monthsSaved = Math.max(0, before.scheduleMonths - after.scheduleMonths)
     const interestSaved = Math.max(0, before.totalInterest - after.totalInterest)
@@ -755,39 +919,28 @@ export default class extends Controller {
   previewPrepayment() {
     if (!this.hasPrepayPreviewTarget) return
 
-    const slot = this.currentSlot()
-    const recorded = Number(slot.recorded_prepayment_total || 0)
-    const applied = this.appliedExtraTotal()
-
     this.clampPrepaymentToLoanAmount()
 
-    let loanAmount = this.emiBasisPrincipal()
-    let rate = toNumber(this.rateRangeTarget.value, 0)
-    let tenure = toNumber(this.tenureRangeTarget.value, 0)
-    if (rate <= 0) rate = toNumber(this.rateInputTarget.value, 0)
-    if (tenure <= 0) tenure = toNumber(this.tenureInputTarget.value, 0)
-    const months = this.tenureUnit === "yr" ? tenure * 12 : tenure
+    const rate = this.annualRate()
+    const months = this.tenureMonths()
 
     const extra = this.hasPrepaymentInputTarget ? Math.max(0, toNumber(this.prepaymentInputTarget.value, 0)) : 0
-    const totalPrepay = recorded + applied + extra
-    const outstanding = Math.max(0, loanAmount - totalPrepay)
+    const outstanding = this.workingOutstanding(extra)
 
-    if (extra <= 0.01 || loanAmount <= 0 || months <= 0) {
+    if (extra <= 0.01 || outstanding < 0 || months <= 0) {
       this.prepayPreviewTarget.hidden = true
       return
     }
 
     const before = this.computeSchedule({
-      loanAmount,
       annualRatePercent: rate,
       totalMonths: months,
-      totalPrepay: recorded + applied,
+      extra: 0,
     })
     const after = this.computeSchedule({
-      loanAmount,
       annualRatePercent: rate,
       totalMonths: months,
-      totalPrepay: recorded + applied + extra,
+      extra,
     })
     const interestSaved = Math.max(0, before.totalInterest - after.totalInterest)
     const monthsSaved = Math.max(0, before.scheduleMonths - after.scheduleMonths)
@@ -801,8 +954,13 @@ export default class extends Controller {
   }
 
   scheduleParams() {
-    let startYear = new Date().getFullYear()
-    let startMonth = new Date().getMonth() + 1
+    const slot = this.currentSlot()
+    let startYear = Number(slot.schedule_start_year)
+    let startMonth = Number(slot.schedule_start_month)
+    if (!Number.isFinite(startYear) || !Number.isFinite(startMonth) || startMonth < 1 || startMonth > 12) {
+      startYear = new Date().getFullYear()
+      startMonth = new Date().getMonth() + 1
+    }
     if (this.hasScheduleStartTarget && this.scheduleStartTarget.value) {
       const parts = this.scheduleStartTarget.value.split("-").map(Number)
       if (Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
@@ -816,40 +974,45 @@ export default class extends Controller {
 
   recalc() {
     const slot = this.currentSlot()
-    const recorded = Number(slot.recorded_prepayment_total || 0)
     const applied = this.appliedExtraTotal()
 
-    let loanAmount = this.emiBasisPrincipal()
-    let rate = toNumber(this.rateRangeTarget.value, 0)
-    let tenure = toNumber(this.tenureRangeTarget.value, 0)
-    if (rate <= 0) rate = toNumber(this.rateInputTarget.value, 0)
-    if (tenure <= 0) tenure = toNumber(this.tenureInputTarget.value, 0)
-    const months = this.tenureUnit === "yr" ? tenure * 12 : tenure
+    const rate = this.annualRate()
+    const months = this.tenureMonths()
 
-    // Session prepayments (Add prepayment) + DB prepayments both reduce principal; do not gate on prepaymentInput target.
-    const totalPrepay = recorded + applied
-    const effectivePrincipal = Math.max(0, loanAmount - totalPrepay)
+    // Session "Add prepayment" reduces principal left; DB prepays are already in outstanding_principal.
+    const effectivePrincipal = this.workingOutstanding(0)
 
-    const originalEmi = emi(loanAmount, rate, months)
+    const originalEmi = this.monthlyEmi(rate, months)
 
     let scheduleMonths = 0
     if (effectivePrincipal <= 0) {
       scheduleMonths = 0
-    } else if (loanAmount - effectivePrincipal < 0.01) {
+    } else if (applied < 0.01 && this.tenureEdited(months)) {
       scheduleMonths = months
+    } else if (applied < 0.01 && Number(slot.remaining_months) > 0 && slot.balance_from_loan) {
+      scheduleMonths = Number(slot.remaining_months)
     } else {
       scheduleMonths = monthsFromFixedEmi(effectivePrincipal, rate, originalEmi)
     }
 
     const { startYear, startMonth } = this.scheduleParams()
-    const ap = scheduleAfterAutopay(
-      effectivePrincipal,
-      rate,
-      scheduleMonths,
-      originalEmi,
-      startYear,
-      startMonth,
-    )
+    let ap
+    if (slot.balance_from_loan) {
+      const tailYear = Number(slot.tail_start_year) || startYear
+      const tailMonth = Number(slot.tail_start_month) || startMonth
+      const monthsResolved =
+        scheduleMonths > 0 ? scheduleMonths : monthsFromFixedEmi(effectivePrincipal, rate, originalEmi)
+      ap = scheduleFromTail(effectivePrincipal, rate, monthsResolved, originalEmi, tailYear, tailMonth)
+    } else {
+      ap = scheduleAfterAutopay(
+        effectivePrincipal,
+        rate,
+        scheduleMonths || months,
+        originalEmi,
+        startYear,
+        startMonth,
+      )
+    }
 
     this.emiOutTarget.textContent = formatInr(originalEmi)
     this.interestOutTarget.textContent = formatInr(round2(ap.totalIntRem))
@@ -859,17 +1022,29 @@ export default class extends Controller {
       this.effectivePrincipalOutTarget.textContent = formatInr(ap.outstanding)
     }
     if (this.hasEffectivePrincipalNoteTarget) {
-      this.effectivePrincipalNoteTarget.hidden = totalPrepay <= 0
+      const recorded = Number(slot.recorded_prepayment_total || 0)
+      this.effectivePrincipalNoteTarget.hidden = recorded + applied <= 0
+    }
+    if (this.hasEffectivePrincipalDetailTarget) {
+      if (applied > 0.01) {
+        const before = this.serverOutstanding()
+        this.effectivePrincipalDetailTarget.hidden = false
+        this.effectivePrincipalDetailTarget.textContent = `${formatInr(before)} − ${formatInr(applied)} prepayment = ${formatInr(ap.outstanding)}`
+      } else {
+        this.effectivePrincipalDetailTarget.hidden = true
+        this.effectivePrincipalDetailTarget.textContent = ""
+      }
     }
     if (this.hasRemainingTenureOutTarget) {
       this.remainingTenureOutTarget.textContent = this.formatRemainingMonths(ap.remainingMonths)
     }
 
-    // Keep the main amount control aligned with "Principal left" once an EMI due date has passed (e.g. after the 15th).
+    // Amount slider = outstanding before session prepays (EMI basis stays separate).
+    // Never overwrite it with post-prepay principal — that made prepays look like a no-op.
     if (this.hasAmountInputTarget && this.hasAmountRangeTarget) {
       const editing = document.activeElement === this.amountInputTarget
       if (!editing) {
-        const displayAmt = Math.max(0, Math.round(ap.outstanding))
+        const displayAmt = Math.max(0, Math.round(this.serverOutstanding()))
         this.amountInputTarget.value = displayAmt.toLocaleString("en-IN")
         this.amountRangeTarget.value = String(displayAmt)
       }
@@ -879,9 +1054,9 @@ export default class extends Controller {
 
     this.updateDonut(ap.outstanding, ap.totalPayRem)
     this.renderYearly({
-      principal: effectivePrincipal,
+      principal: ap.outstanding,
       rate,
-      months: scheduleMonths,
+      months: ap.remainingMonths,
       fixedPayment: originalEmi,
       schedulePrecalc: ap,
     })

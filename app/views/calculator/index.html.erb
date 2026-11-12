@@ -10,7 +10,7 @@
       </div>
       <nav class="lc-nav">
         <%= link_to "Calculator", root_path, class: "lc-nav__link" %>
-        <%= link_to "Loans", loans_path, class: "lc-nav__link" %>
+        <%= link_to "Loan accounts", loans_path, class: "lc-btn lc-btn--secondary" %>
         <% if logged_in? %>
           <span class="lc-nav__muted">Signed in as <strong><%= current_user.name %></strong></span>
           <%= button_to "Logout", session_path, method: :delete, class: "lc-btn lc-btn--ghost" %>
@@ -30,13 +30,33 @@
         <% cfg = cfg.with_indifferent_access %>
         <% ui = home_loan_ui(cfg) %>
         <% home_slice = (cfg[:home] || {}).with_indifferent_access %>
-        <% met_base = loan_home_metrics(cfg) %>
-        <% fixed_emi = loan_emi(home_slice[:principal].to_f, home_slice[:annual_interest_rate].to_f, home_slice[:term_months].to_i) %>
-        <% schedule_sy, schedule_sm = Date.current.year, Date.current.month %>
-        <% met = met_base.merge(loan_kpis_after_autopay(met_base[:outstanding_principal], home_slice[:annual_interest_rate].to_f, met_base[:remaining_months], met_base[:emi], start_year: schedule_sy, start_month: schedule_sm)) %>
+        <% schedule_sy, schedule_sm = schedule_anchor_from_slot(home_slice) %>
+        <% met = loan_slot_metrics(cfg, :home) %>
+        <% fixed_emi = slot_fixed_emi(home_slice) %>
         <% amount_display = [ met[:outstanding_principal].to_f, 0 ].max.round %>
         <% out_principal = (home_slice[:outstanding_principal].presence || home_slice[:principal]).to_f %>
-        <% yr_rows = yearly_amortization_rows(out_principal, home_slice[:annual_interest_rate].to_f, met_base[:remaining_months], start_year: schedule_sy, start_month: schedule_sm, basis: :calendar, fixed_payment: fixed_emi) %>
+        <% yr_rows =
+          if home_slice[:balance_from_loan]
+            yearly_tail_amortization_rows(
+              met[:outstanding_principal].to_f,
+              home_slice[:annual_interest_rate].to_f,
+              met[:schedule_months].to_i,
+              start_year: met[:tail_start_year],
+              start_month: met[:tail_start_month],
+              basis: :calendar,
+              fixed_payment: fixed_emi
+            )
+          else
+            yearly_amortization_rows(
+              out_principal,
+              home_slice[:annual_interest_rate].to_f,
+              met[:schedule_months].to_i,
+              start_year: schedule_sy,
+              start_month: schedule_sm,
+              basis: :calendar,
+              fixed_payment: fixed_emi
+            )
+          end %>
         <% p_pct, i_pct = payment_breakup_percentages(met[:outstanding_principal], met[:total_interest]) %>
         <% max_yearly_pay = yr_rows.map { |r| r[:total_paid].to_f }.max %>
         <% max_yearly_pay = 1.0 if max_yearly_pay.nil? || max_yearly_pay <= 0 %>
@@ -126,10 +146,6 @@
                         step="1"
                         value="0"
                         placeholder="0"
-                        <% if home_prepay_form_id.present? %>
-                          name="prepayment[amount]"
-                          form="<%= home_prepay_form_id %>"
-                        <% end %>
                         data-loan-calculator-target="prepaymentInput"
                         data-action="input->loan-calculator#previewPrepayment"
                       >
@@ -149,29 +165,39 @@
                       maxlength="120"
                       data-loan-calculator-target="prepaymentNoteInput"
                     >
-                    <button type="button" class="lc-btn lc-btn--apply-prepay" data-action="click->loan-calculator#applyPrepayment">Add prepayment</button>
+                    <button type="button" class="lc-btn lc-btn--apply-prepay" data-loan-calculator-target="applyPrepaymentBtn" data-action="click->loan-calculator#applyPrepayment">
+                      <%= (home_prepay_form_id.present? || add_prepay_form_id.present?) ? "Save prepayment" : "Preview prepayment" %>
+                    </button>
                     <% if home_prepay_form_id.present? %>
-                      <%= form_with model: [home_loan, Prepayment.new], local: true, html: { id: home_prepay_form_id, class: "lc-prepay-form lc-prepay-form--inline", data: { loan_type: "home", loan_calculator_target: "savePrepaymentForm" } } do |f| %>
-                        <%= f.date_field :paid_on, value: Date.current, class: "lc-input lc-input--date" %>
-                        <%= f.submit "Save to database", class: "lc-btn lc-btn--add-prepay" %>
+                      <%= form_with model: [home_loan, Prepayment.new], url: loan_prepayments_path(home_loan), html: { id: home_prepay_form_id, class: "lc-prepay-form", data: { loan_type: "home", loan_calculator_target: "savePrepaymentForm", turbo: false } } do |f| %>
+                        <%= f.hidden_field :amount, value: "", data: { prepay_field: "amount" } %>
+                        <%= f.hidden_field :paid_on, value: Date.current, data: { prepay_field: "paid_on" } %>
+                        <%= f.hidden_field :notes, value: "", data: { prepay_field: "notes" } %>
+                        <%= f.hidden_field :charges, value: 0 %>
                       <% end %>
                     <% end %>
                     <% if add_prepay_form_id.present? %>
-                      <%= form_with model: [additional_loan, Prepayment.new], local: true, html: { id: add_prepay_form_id, class: "lc-prepay-form lc-prepay-form--inline", data: { loan_type: "additional", loan_calculator_target: "savePrepaymentForm" } } do |f| %>
-                        <%= f.date_field :paid_on, value: Date.current, class: "lc-input lc-input--date" %>
-                        <%= f.submit "Save to database", class: "lc-btn lc-btn--add-prepay" %>
+                      <%= form_with model: [additional_loan, Prepayment.new], url: loan_prepayments_path(additional_loan), html: { id: add_prepay_form_id, class: "lc-prepay-form", data: { loan_type: "additional", loan_calculator_target: "savePrepaymentForm", turbo: false }, hidden: true } do |f| %>
+                        <%= f.hidden_field :amount, value: "", data: { prepay_field: "amount" } %>
+                        <%= f.hidden_field :paid_on, value: Date.current, data: { prepay_field: "paid_on" } %>
+                        <%= f.hidden_field :notes, value: "", data: { prepay_field: "notes" } %>
+                        <%= f.hidden_field :charges, value: 0 %>
                       <% end %>
                     <% end %>
                   </div>
-                  <% if home_slice[:recorded_prepayment_total].to_f > 0 %>
-                    <p class="lc-field__hint">Already in database: <%= format_inr(home_slice[:recorded_prepayment_total]) %>.</p>
+                  <% add_slice = (cfg[:additional] || {}).with_indifferent_access %>
+                  <% if home_slice[:recorded_prepayment_total].to_f > 0.01 || add_slice[:recorded_prepayment_total].to_f > 0.01 %>
+                    <p class="lc-field__hint">
+                      Already saved: Home <%= format_inr(home_slice[:recorded_prepayment_total]) %>,
+                      Additional <%= format_inr(add_slice[:recorded_prepayment_total]) %>.
+                    </p>
                   <% end %>
                   <p class="lc-prepay-preview" data-loan-calculator-target="prepayPreview" hidden>
                     You will save about <strong data-loan-calculator-target="prepayPreviewInterest">₹ 0</strong> in interest and finish
                     <strong data-loan-calculator-target="prepayPreviewMonths">0 months</strong> earlier.
                   </p>
                   <div class="lc-prepay-applied" data-loan-calculator-target="appliedPrepaymentsWrap" hidden>
-                    <div class="lc-prepay-applied__title">Applied prepayments (this session)</div>
+                    <div class="lc-prepay-applied__title">Preview only (not saved)</div>
                     <ul class="lc-prepay-applied__list" data-loan-calculator-target="appliedPrepaymentsList"></ul>
                   </div>
                   <% if logged_in? && home_loan && current_user.id == home_loan.user_id && home_loan.prepayments.any? %>
@@ -214,7 +240,14 @@
                       </ul>
                     </div>
                   <% end %>
-                  <p class="lc-field__hint">Type an amount, then click <strong>Add prepayment</strong> to apply it and update the principal left on the loan. If you’re logged in, you can also pick a date and click <strong>Save to database</strong>.</p>
+                  <% if home_prepay_form_id.present? || add_prepay_form_id.present? %>
+                    <p class="lc-field__hint">You are signed in as <strong><%= current_user.name %></strong>. <strong>Save prepayment</strong> writes to the ledger and updates Paid &amp; Remaining on Loan accounts.</p>
+                  <% else %>
+                    <p class="lc-field__hint">
+                      Preview only — Loan accounts will not change.
+                      <%= link_to "Log in", new_session_path %> as Sahil or Sanket first, then save on <em>your</em> column.
+                    </p>
+                  <% end %>
                 </div>
 
                 <div class="lc-controls__foot">
@@ -228,6 +261,7 @@
                   <span class="lc-effective-principal__label">Principal left on the loan</span>
                   <strong class="lc-effective-principal__value" data-loan-calculator-target="effectivePrincipalOut"><%= format_inr(met[:outstanding_principal]) %></strong>
                   <span class="lc-effective-principal__note" data-loan-calculator-target="effectivePrincipalNote" hidden>after prepayment</span>
+                  <p class="lc-effective-principal__detail" data-loan-calculator-target="effectivePrincipalDetail" hidden></p>
                 </div>
                 <div class="lc-kpis">
                   <div class="lc-kpi">
@@ -283,7 +317,7 @@
                 <input
                   type="month"
                   class="lc-input lc-input--month"
-                  value="<%= Date.current.strftime('%Y-%m') %>"
+                  value="<%= format('%04d-%02d', schedule_sy, schedule_sm) %>"
                   data-loan-calculator-target="scheduleStart"
                   data-action="change->loan-calculator#scheduleControlChanged"
                 >

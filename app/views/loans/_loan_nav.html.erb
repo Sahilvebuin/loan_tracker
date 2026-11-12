@@ -1,0 +1,23 @@
+<%# locals: loan, active: nil %>
+<nav class="lc-nav lc-nav--loan" aria-label="Loan sections">
+  <%= link_to loan_path(loan), class: "lc-nav__link lc-nav__link--block #{"is-active" if active == :overview}" do %>
+    <span class="lc-nav__main">Overview</span>
+    <span class="lc-nav__hint">Balances & totals</span>
+  <% end %>
+  <%= link_to loan_loan_emi_schedules_path(loan), class: "lc-nav__link lc-nav__link--block #{"is-active" if active == :schedule}" do %>
+    <span class="lc-nav__main">EMI plan</span>
+    <span class="lc-nav__hint">Every installment</span>
+  <% end %>
+  <%= link_to loan_loan_payments_path(loan), class: "lc-nav__link lc-nav__link--block #{"is-active" if active == :payments}" do %>
+    <span class="lc-nav__main">Money trail</span>
+    <span class="lc-nav__hint">What you paid</span>
+  <% end %>
+  <%= link_to loans_path, class: "lc-nav__link lc-nav__link--block #{"is-active" if active == :index}" do %>
+    <span class="lc-nav__main">All loans</span>
+    <span class="lc-nav__hint">Switch account</span>
+  <% end %>
+  <%= link_to root_path, class: "lc-nav__link lc-nav__link--block" do %>
+    <span class="lc-nav__main">Calculator</span>
+    <span class="lc-nav__hint">What-if EMI</span>
+  <% end %>
+</nav>

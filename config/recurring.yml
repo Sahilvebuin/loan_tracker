@@ -16,3 +16,8 @@ production:
   loan_emi_autopay:
     class: LoanEmiAutopayJob
     schedule: every day at 12:01am
+
+development:
+  loan_emi_autopay:
+    class: LoanEmiAutopayJob
+    schedule: every day at 12:01am

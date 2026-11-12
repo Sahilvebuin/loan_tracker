@@ -33,8 +33,13 @@ RUN set -eux; \
   ; \
   rm -rf /var/lib/apt/lists/*
 
-RUN sed -i 's/deb.debian.org/ftp.debian.org/g' /etc/apt/sources.list
-RUN sed -i 's/deb.debian.org/mirrors.piconets.webwerks.in/g' /etc/apt/sources.list
+# Bookworm uses /etc/apt/sources.list.d/debian.sources (handled above via APT_DEBIAN_HOST/APT_MIRROR).
+# Older images may still have /etc/apt/sources.list — rewrite only if present.
+RUN set -eux; \
+  if [ -f /etc/apt/sources.list ]; then \
+    sed -i 's/deb.debian.org/ftp.debian.org/g' /etc/apt/sources.list; \
+  fi
+
 WORKDIR /rails
 
 ENV BUNDLE_PATH="/usr/local/bundle" \

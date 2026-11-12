@@ -1,0 +1,207 @@
+<% content_for :title, "Money trail · #{@loan.title}" %>
+
+<div class="lc-page">
+  <div class="lc-shell">
+    <header class="lc-header">
+      <div>
+        <div class="lc-dash__eyebrow">Actual payments</div>
+        <div class="lc-title">Money trail</div>
+        <div class="lc-subtitle">
+          Everything you paid toward <strong><%= @loan.title.presence || "this loan" %></strong>
+          — like a bank passbook.
+        </div>
+      </div>
+      <%= render "loans/loan_nav", loan: @loan, active: :payments %>
+    </header>
+
+    <div class="lc-dash">
+      <section class="lc-guide">
+        <div class="lc-guide__title">What this page shows</div>
+        <div class="lc-guide__grid">
+          <div class="lc-guide__item is-here">
+            <strong>Transactions</strong>
+            <span>Each EMI or prepayment with principal / interest split.</span>
+          </div>
+          <div class="lc-guide__item">
+            <strong>Monthly snapshots</strong>
+            <span>One summary row per calendar month.</span>
+          </div>
+          <div class="lc-guide__item">
+            <strong>Financial year</strong>
+            <span>India FY (Apr–Mar) totals for tax-style review.</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="lc-section">
+        <div class="lc-breakup">
+          <div class="lc-breakup__card lc-breakup__card--owe">
+            <div class="lc-breakup__label">Still outstanding</div>
+            <div class="lc-breakup__value"><%= format_inr(@loan.ledger_outstanding) %></div>
+            <div class="lc-breakup__note">Left on the loan today</div>
+          </div>
+          <div class="lc-breakup__card lc-breakup__card--principal">
+            <div class="lc-breakup__label">Principal paid</div>
+            <div class="lc-breakup__value"><%= format_inr(@loan.total_principal_paid_ledger) %></div>
+            <div class="lc-breakup__note">Loan reduced by this much</div>
+          </div>
+          <div class="lc-breakup__card lc-breakup__card--interest">
+            <div class="lc-breakup__label">Interest paid</div>
+            <div class="lc-breakup__value"><%= format_inr(@loan.total_interest_paid_ledger) %></div>
+            <div class="lc-breakup__note">Banking cost so far</div>
+          </div>
+          <div class="lc-breakup__card lc-breakup__card--total">
+            <div class="lc-breakup__label">Total cash out</div>
+            <div class="lc-breakup__value"><%= format_inr(@loan.total_amount_paid_ledger) %></div>
+            <div class="lc-breakup__note">All payments combined</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="lc-section">
+        <div class="lc-section__head">
+          <div>
+            <h2 class="lc-section__title">Payment passbook</h2>
+            <p class="lc-section__sub">Filter by year, type, or date range</p>
+          </div>
+        </div>
+
+        <%= form_with url: loan_loan_payments_path(@loan), method: :get, local: true, html: { class: "lc-filterbar" } do %>
+          <div class="lc-filterbar__field">
+            <label for="year">Year</label>
+            <select class="lc-select" id="year" name="year">
+              <option value="">All years</option>
+              <% @years.each do |y| %>
+                <option value="<%= y %>" <%= "selected" if params[:year].to_s == y.to_s %>><%= y %></option>
+              <% end %>
+            </select>
+          </div>
+          <div class="lc-filterbar__field">
+            <label for="payment_type">Payment type</label>
+            <select class="lc-select" id="payment_type" name="payment_type">
+              <option value="">All types</option>
+              <% LoanPayment::PAYMENT_TYPES.each do |t| %>
+                <option value="<%= t %>" <%= "selected" if params[:payment_type] == t %>><%= payment_type_plain(t) %></option>
+              <% end %>
+            </select>
+          </div>
+          <div class="lc-filterbar__field">
+            <label for="from">From</label>
+            <input class="lc-input" type="date" id="from" name="from" value="<%= params[:from] %>">
+          </div>
+          <div class="lc-filterbar__field">
+            <label for="to">To</label>
+            <input class="lc-input" type="date" id="to" name="to" value="<%= params[:to] %>">
+          </div>
+          <button type="submit" class="lc-btn">Filter</button>
+          <%= link_to "Clear", loan_loan_payments_path(@loan), class: "lc-btn lc-btn--secondary" %>
+        <% end %>
+
+        <% if @payments.any? %>
+          <div class="lc-tablewrap lc-tablewrap--bank">
+            <table class="lc-table lc-table--bank">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th class="lc-col-type">Type</th>
+                  <th class="num">Amount</th>
+                  <th class="num th-principal">Principal</th>
+                  <th class="num th-interest">Interest</th>
+                  <th class="num">Charges</th>
+                  <th class="num th-balance">Balance after</th>
+                  <th>Note</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% @payments.each do |p| %>
+                  <tr>
+                    <td><%= p.paid_on.strftime("%d %b %Y") %></td>
+                    <td class="lc-col-type"><%= payment_type_plain(p.payment_type) %></td>
+                    <td class="num"><%= format_inr(p.amount) %></td>
+                    <td class="num"><%= format_inr(p.principal_amount) %></td>
+                    <td class="num"><%= format_inr(p.interest_amount) %></td>
+                    <td class="num"><%= format_inr(p.charges_amount) %></td>
+                    <td class="num"><%= format_inr(p.balance_after) %></td>
+                    <td><%= p.notes.presence || "—" %></td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+        <% else %>
+          <div class="lc-empty">No payments recorded yet. EMIs appear here after they are posted.</div>
+        <% end %>
+      </section>
+
+      <div class="lc-split">
+        <section class="lc-section">
+          <div class="lc-section__head">
+            <div>
+              <h2 class="lc-section__title">Month-by-month summary</h2>
+              <p class="lc-section__sub">Stored snapshot for each month you paid</p>
+            </div>
+          </div>
+          <% if @snapshots.any? %>
+            <div class="lc-tablewrap lc-tablewrap--bank">
+              <table class="lc-table lc-table--bank">
+                <thead>
+                  <tr>
+                    <th>Month</th>
+                    <th class="num">Started with</th>
+                    <th class="num">EMI</th>
+                    <th class="num">Principal</th>
+                    <th class="num">Interest</th>
+                    <th class="num">Prepay</th>
+                    <th class="num">Ended with</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% @snapshots.each do |s| %>
+                    <tr>
+                      <td><%= s.period_label %></td>
+                      <td class="num"><%= format_inr(s.opening_balance) %></td>
+                      <td class="num"><%= format_inr(s.emi_paid) %></td>
+                      <td class="num"><%= format_inr(s.principal_paid) %></td>
+                      <td class="num"><%= format_inr(s.interest_paid) %></td>
+                      <td class="num"><%= format_inr(s.prepayment) %></td>
+                      <td class="num"><%= format_inr(s.closing_balance) %></td>
+                    </tr>
+                  <% end %>
+                </tbody>
+              </table>
+            </div>
+          <% else %>
+            <div class="lc-empty">No monthly summaries yet.</div>
+          <% end %>
+        </section>
+
+        <section class="lc-section">
+          <div class="lc-section__head">
+            <div>
+              <h2 class="lc-section__title">Financial year (India)</h2>
+              <p class="lc-section__sub">April → March totals</p>
+            </div>
+          </div>
+          <% if @fy_summaries.any? %>
+            <% @fy_summaries.each do |fy| %>
+              <div class="lc-fy-card">
+                <div class="lc-fy-card__title"><%= fy[:label] %></div>
+                <div class="lc-meta-grid">
+                  <div class="lc-meta"><span class="lc-meta__label">Opening</span><span class="lc-meta__value"><%= format_inr(fy[:opening]) %></span></div>
+                  <div class="lc-meta"><span class="lc-meta__label">EMI total</span><span class="lc-meta__value"><%= format_inr(fy[:emi]) %></span></div>
+                  <div class="lc-meta"><span class="lc-meta__label">Principal</span><span class="lc-meta__value"><%= format_inr(fy[:principal]) %></span></div>
+                  <div class="lc-meta"><span class="lc-meta__label">Interest</span><span class="lc-meta__value"><%= format_inr(fy[:interest]) %></span></div>
+                  <div class="lc-meta"><span class="lc-meta__label">Prepayments</span><span class="lc-meta__value"><%= format_inr(fy[:prepayment]) %></span></div>
+                  <div class="lc-meta"><span class="lc-meta__label">Total paid</span><span class="lc-meta__value"><%= format_inr(fy[:total]) %></span></div>
+                  <div class="lc-meta"><span class="lc-meta__label">Closing</span><span class="lc-meta__value"><%= format_inr(fy[:closing]) %></span></div>
+                </div>
+              </div>
+            <% end %>
+          <% else %>
+            <div class="lc-empty">No financial-year data yet.</div>
+          <% end %>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>

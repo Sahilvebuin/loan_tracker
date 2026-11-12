@@ -5,8 +5,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: loan_calculator_development
-    ports:
-      - "5432:5432"
+    # Keep Postgres internal to the compose network so it doesn't clash with a
+    # host Postgres already bound to 5432. The web service reaches it via DB_HOST=db.
     volumes:
       - pgdata:/var/lib/postgresql/data
 

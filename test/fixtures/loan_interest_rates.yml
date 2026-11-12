@@ -1,0 +1,15 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one_home_rate:
+  loan: one
+  interest_rate: 9.0
+  effective_from: 2026-04-07
+  effective_to:
+  remarks: Fixture initial rate
+
+two_home_rate:
+  loan: two
+  interest_rate: 9.0
+  effective_from: 2026-04-07
+  effective_to:
+  remarks: Fixture initial rate

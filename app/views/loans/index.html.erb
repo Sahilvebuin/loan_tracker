@@ -1,43 +1,107 @@
+<% content_for :title, "Your loans" %>
+
 <div class="lc-page">
   <div class="lc-shell">
     <header class="lc-header">
       <div>
-        <div class="lc-title">Loans</div>
-        <div class="lc-subtitle">Saved loans and their prepayments.</div>
+        <div class="lc-dash__eyebrow">All accounts</div>
+        <div class="lc-title">Your loans</div>
+        <div class="lc-subtitle">Sahil and Sanket side by side — paid vs remaining for each loan.</div>
       </div>
       <nav class="lc-nav">
-        <%= link_to "Calculator", root_path, class: "lc-nav__link" %>
+        <%= link_to "EMI calculator", root_path, class: "lc-btn lc-btn--ghost" %>
+        <% if logged_in? %>
+          <span class="lc-nav__muted"><%= current_user.name %></span>
+        <% else %>
+          <%= link_to "Log in", new_session_path, class: "lc-nav__link" %>
+        <% end %>
       </nav>
     </header>
 
-    <% if @loans.blank? %>
-      <div class="lc-card" style="padding: 16px;">No loans yet.</div>
+    <% if @loans_by_person.blank? %>
+      <div class="lc-section"><div class="lc-empty">No loans yet. Create or seed loan records to begin.</div></div>
     <% else %>
-      <div class="lc-card" style="padding: 16px;">
-        <table class="lc-table">
-          <thead>
-            <tr>
-              <th>Title</th>
-              <th class="num">Principal</th>
-              <th class="num">Rate</th>
-              <th class="num">Term (months)</th>
-              <th class="num">Prepayments</th>
-            </tr>
-          </thead>
-          <tbody>
-            <% @loans.each do |loan| %>
-              <tr>
-                <td><%= link_to(loan.title.presence || "Loan ##{loan.id}", loan_path(loan)) %></td>
-                <td class="num"><%= format_inr(loan.principal) %></td>
-                <td class="num"><%= loan.annual_interest_rate %>%</td>
-                <td class="num"><%= loan.term_months %></td>
-                <td class="num"><%= loan.prepayments.count %></td>
-              </tr>
-            <% end %>
-          </tbody>
-        </table>
+      <div class="lc-accounts">
+        <% @loans_by_person.each do |user, loans| %>
+          <% theme = person_account_theme(user.name) %>
+          <% total_borrowed = loans.sum { |l| l.original_principal.to_d } %>
+          <% total_paid = loans.sum { |l| l.total_principal_paid_ledger.to_d } %>
+          <% total_left = loans.sum { |l| l.ledger_outstanding.to_d } %>
+          <section class="lc-account-person lc-account-person--<%= theme %>">
+            <header class="lc-account-person__head">
+              <div class="lc-account-person__who">
+                <div class="lc-account-person__avatar" aria-hidden="true"><%= user.name.to_s.first.upcase %></div>
+                <div>
+                  <div class="lc-account-person__name"><%= user.name %></div>
+                  <div class="lc-account-person__count"><%= pluralize(loans.size, "loan account") %></div>
+                </div>
+              </div>
+              <div class="lc-account-person__totals">
+                <div class="lc-account-person__total">
+                  <span class="lc-account-person__total-label">Paid</span>
+                  <strong class="lc-account-person__total-value lc-account-person__total-value--paid"><%= format_inr(total_paid) %></strong>
+                </div>
+                <div class="lc-account-person__total">
+                  <span class="lc-account-person__total-label">Remaining</span>
+                  <strong class="lc-account-person__total-value lc-account-person__total-value--left"><%= format_inr(total_left) %></strong>
+                </div>
+                <div class="lc-account-person__total lc-account-person__total--muted">
+                  <span class="lc-account-person__total-label">Borrowed</span>
+                  <strong class="lc-account-person__total-value"><%= format_inr(total_borrowed) %></strong>
+                </div>
+              </div>
+            </header>
+
+            <div class="lc-account-person__loans">
+              <% loans.each do |loan| %>
+                <% paid_pct = loan_repaid_percent(loan) %>
+                <% left_pct = loan_remaining_percent(loan) %>
+                <% paid_amt = loan.total_principal_paid_ledger %>
+                <% left_amt = loan.ledger_outstanding %>
+                <% prep_amt = loan.total_prepayment_ledger %>
+                <%= link_to loan_path(loan), class: "lc-account-loan" do %>
+                  <div class="lc-account-loan__top">
+                    <div>
+                      <div class="lc-account-loan__title"><%= loan.title.presence || "Loan ##{loan.id}" %></div>
+                      <div class="lc-account-loan__meta">
+                        <%= number_with_precision(loan.annual_interest_rate, precision: 2) %>% ·
+                        <%= loan_years_months_label(loan.term_months) %>
+                        <% if loan.emi_amount.present? %> · EMI <%= format_inr(loan.emi_amount) %><% end %>
+                      </div>
+                      <% if prep_amt.to_d > 0.01 %>
+                        <div class="lc-account-loan__prepay">Prepayments <%= format_inr(prep_amt) %></div>
+                      <% end %>
+                    </div>
+                    <span class="lc-status lc-status--<%= loan.status %>"><%= loan.status.to_s.titleize %></span>
+                  </div>
+
+                  <div class="lc-account-rings" aria-label="Paid and remaining principal">
+                    <div class="lc-ring lc-ring--paid" style="--pct: <%= paid_pct %>;" title="<%= paid_pct %>% of principal repaid (EMI + prepayments)">
+                      <div class="lc-ring__face">
+                        <span class="lc-ring__amount"><%= format_inr(paid_amt) %></span>
+                        <span class="lc-ring__caption">Paid</span>
+                        <span class="lc-ring__pct"><%= paid_pct %>%</span>
+                      </div>
+                    </div>
+                    <div class="lc-ring lc-ring--left" style="--pct: <%= left_pct %>;" title="<%= left_pct %>% of principal remaining">
+                      <div class="lc-ring__face">
+                        <span class="lc-ring__amount"><%= format_inr(left_amt) %></span>
+                        <span class="lc-ring__caption">Remaining</span>
+                        <span class="lc-ring__pct"><%= left_pct %>%</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="lc-account-loan__foot">
+                    <span class="lc-account-loan__borrowed">Borrowed <%= format_inr(loan.original_principal) %></span>
+                    <span class="lc-btn lc-btn--ghost lc-btn--tiny">Open account</span>
+                  </div>
+                <% end %>
+              <% end %>
+            </div>
+          </section>
+        <% end %>
       </div>
     <% end %>
   </div>
 </div>
-

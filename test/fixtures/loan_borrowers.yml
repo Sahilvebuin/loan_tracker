@@ -1,0 +1,13 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one_primary:
+  loan: one
+  user: one
+  role: primary
+  ownership_percent: 100
+
+two_primary:
+  loan: two
+  user: two
+  role: primary
+  ownership_percent: 100

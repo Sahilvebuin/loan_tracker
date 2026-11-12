@@ -13,7 +13,10 @@ class PrepaymentsControllerTest < ActionDispatch::IntegrationTest
     assert_difference -> { loan.prepayments.count }, 1 do
       post loan_prepayments_url(loan), params: { prepayment: { amount: 1000, paid_on: Date.current } }
     end
-    assert_redirected_to root_path
+    assert_redirected_to loans_path
+    loan.reload
+    assert loan.loan_payments.posted.where(payment_type: "prepayment").exists?
+    assert_operator loan.ledger_outstanding, :<, loan.principal
   end
 
   test "rejects create when another user owns the loan" do
@@ -44,6 +47,6 @@ class PrepaymentsControllerTest < ActionDispatch::IntegrationTest
         delete loan_prepayment_url(loan, prep)
       end
     end
-    assert_redirected_to root_path
+    assert_redirected_to loans_path
   end
 end

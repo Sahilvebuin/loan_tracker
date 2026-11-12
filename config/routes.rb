@@ -15,6 +15,8 @@ Rails.application.routes.draw do
 
   resources :loans do
     resources :prepayments, only: %i[create destroy]
+    resources :loan_emi_schedules, only: %i[index create], path: "emi_schedule"
+    resources :loan_payments, only: %i[index], path: "payments"
   end
 
   # Defines the root path route ("/")

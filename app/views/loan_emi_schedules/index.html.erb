@@ -1,0 +1,134 @@
+<% content_for :title, "EMI plan · #{@loan.title}" %>
+
+<div class="lc-page">
+  <div class="lc-shell">
+    <header class="lc-header">
+      <div>
+        <div class="lc-dash__eyebrow">Month-by-month plan</div>
+        <div class="lc-title">EMI plan</div>
+        <div class="lc-subtitle">
+          Every installment for <strong><%= @loan.title.presence || "this loan" %></strong>
+          — see how much is interest vs principal.
+        </div>
+      </div>
+      <%= render "loans/loan_nav", loan: @loan, active: :schedule %>
+    </header>
+
+    <div class="lc-dash">
+      <section class="lc-guide">
+        <div class="lc-guide__title">Reading this table</div>
+        <div class="lc-guide__grid lc-guide__grid--4">
+          <div class="lc-guide__item">
+            <strong class="lc-swatch lc-swatch--principal">Principal</strong>
+            <span>Part of EMI that reduces your loan.</span>
+          </div>
+          <div class="lc-guide__item">
+            <strong class="lc-swatch lc-swatch--interest">Interest</strong>
+            <span>Part of EMI paid to the bank as cost.</span>
+          </div>
+          <div class="lc-guide__item">
+            <strong class="lc-swatch lc-swatch--balance">Opening → Closing</strong>
+            <span>Balance before and after that month’s EMI.</span>
+          </div>
+          <div class="lc-guide__item">
+            <strong>Status</strong>
+            <span>Paid = done · Upcoming = future · Overdue = missed date.</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="lc-section">
+        <div class="lc-summary-pills">
+          <span class="lc-pill">All installments <strong><%= @summary[:total] %></strong></span>
+          <span class="lc-pill">Already paid <strong><%= @summary[:paid] %></strong></span>
+          <span class="lc-pill">Upcoming <strong><%= @summary[:pending] %></strong></span>
+          <span class="lc-pill">Overdue <strong><%= @summary[:overdue] %></strong></span>
+        </div>
+
+        <%= form_with url: loan_loan_emi_schedules_path(@loan), method: :get, local: true, html: { class: "lc-filterbar" } do %>
+          <div class="lc-filterbar__field">
+            <label for="year">Year</label>
+            <select class="lc-select" id="year" name="year">
+              <option value="">All years</option>
+              <% @years.each do |y| %>
+                <option value="<%= y %>" <%= "selected" if params[:year].to_s == y.to_s %>><%= y %></option>
+              <% end %>
+            </select>
+          </div>
+          <div class="lc-filterbar__field">
+            <label for="status">Show</label>
+            <select class="lc-select" id="status" name="status">
+              <option value="">Everything</option>
+              <% LoanEmiSchedule::STATUSES.each do |st| %>
+                <option value="<%= st %>" <%= "selected" if params[:status] == st %>><%= schedule_status_plain(st) %></option>
+              <% end %>
+            </select>
+          </div>
+          <div class="lc-filterbar__field">
+            <label for="from">From date</label>
+            <input class="lc-input" type="date" id="from" name="from" value="<%= params[:from] %>">
+          </div>
+          <div class="lc-filterbar__field">
+            <label for="to">To date</label>
+            <input class="lc-input" type="date" id="to" name="to" value="<%= params[:to] %>">
+          </div>
+          <button type="submit" class="lc-btn">Filter plan</button>
+          <%= link_to "Clear", loan_loan_emi_schedules_path(@loan), class: "lc-btn lc-btn--secondary" %>
+        <% end %>
+
+        <% if logged_in? && @loan.user_id == current_user.id %>
+          <div class="lc-actions" style="margin-bottom:12px;">
+            <%= button_to "Rebuild full plan", loan_loan_emi_schedules_path(@loan, mode: "full"), method: :post, class: "lc-btn lc-btn--secondary" %>
+            <%= button_to "Update upcoming only", loan_loan_emi_schedules_path(@loan, mode: "refresh_pending"), method: :post, class: "lc-btn lc-btn--ghost" %>
+          </div>
+        <% end %>
+
+        <% if @schedules.any? %>
+          <div class="lc-tablewrap lc-tablewrap--bank">
+            <table class="lc-table lc-table--bank lc-table--schedule">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Due on</th>
+                  <th class="num th-total">EMI</th>
+                  <th class="num th-principal">Principal</th>
+                  <th class="num th-interest">Interest</th>
+                  <th class="num">Opening</th>
+                  <th class="num th-balance">Closing</th>
+                  <th class="num">Rate</th>
+                  <th>Status</th>
+                  <th>Paid on</th>
+                  <th class="num">Actually paid</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% @schedules.each do |row| %>
+                  <tr>
+                    <td><%= row.installment_no %></td>
+                    <td><%= row.due_on.strftime("%d %b %Y") %></td>
+                    <td class="num"><%= format_inr(row.scheduled_emi) %></td>
+                    <td class="num"><%= format_inr(row.principal_amount) %></td>
+                    <td class="num"><%= format_inr(row.interest_amount) %></td>
+                    <td class="num"><%= format_inr(row.opening_principal) %></td>
+                    <td class="num"><%= format_inr(row.closing_principal) %></td>
+                    <td class="num"><%= row.applicable_interest_rate %>%</td>
+                    <td><span class="lc-status lc-status--<%= row.status %>"><%= schedule_status_plain(row.status) %></span></td>
+                    <td><%= row.paid_on&.strftime("%d %b %Y") || "—" %></td>
+                    <td class="num"><%= row.actual_paid_amount.present? ? format_inr(row.actual_paid_amount) : "—" %></td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+        <% else %>
+          <div class="lc-empty">
+            <p>No EMI plan generated yet.</p>
+            <% if logged_in? && @loan.user_id == current_user.id %>
+              <%= button_to "Generate EMI plan now", loan_loan_emi_schedules_path(@loan, mode: "full"), method: :post, class: "lc-btn" %>
+            <% end %>
+          </div>
+        <% end %>
+      </section>
+    </div>
+  </div>
+</div>
